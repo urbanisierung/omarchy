@@ -2,10 +2,6 @@
 import sys
 import subprocess
 import re
-import requests
-import argostranslate.package
-import argostranslate.translate
-from fast_langdetect import detect
 
 # --- CONFIGURATION ---
 # Get your key at: https://www.deepl.com/pro-api
@@ -13,18 +9,47 @@ from fast_langdetect import detect
 DEEPL_AUTH_KEY = ""  
 
 def notify(title, message):
+    """Send a desktop notification."""
     subprocess.run(['notify-send', title, message])
+
+def show_wofi_loading():
+    """
+    Show a loading wofi modal (non-blocking).
+    Returns the Popen process so it can be terminated later.
+    """
+    proc = subprocess.Popen(
+        ['wofi', '--dmenu', '--prompt', '⏳ Translating... Please wait', 
+         '--cache-file', '/dev/null'],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL
+    )
+    # Write content with padding lines to ensure modal has reasonable height
+    content = "\n".join([
+        "╔══════════════════════════════════════╗",
+        "║                                      ║",
+        "║        Translation in progress       ║",
+        "║                                      ║",
+        "╚══════════════════════════════════════╝",
+    ]) + "\n"
+    proc.stdin.write(content.encode('utf-8'))
+    proc.stdin.flush()
+    return proc
 
 def show_wofi_result(label, text):
     """
-    Opens Wofi with the translation result. 
+    Opens Wofi with the translation result in a multiline area.
     Returns True if user hits Enter (to copy), False if Esc.
     """
     try:
+        # Calculate number of lines needed (minimum 5, maximum 15)
+        line_count = min(max(text.count('\n') + 3, 5), 15)
+        
         # We pipe the result text as the input choice for wofi
-        # --lines 2 gives it enough height to look like a popup
         proc = subprocess.run(
-            ['wofi', '--dmenu', '--prompt', label, '--width', '600', '--lines', '2'],
+            ['wofi', '--dmenu', '--prompt', f'{label} (Enter to copy)', 
+             '--width', '800', '--height', '400', '--lines', str(line_count),
+             '--cache-file', '/dev/null'],
             input=text.encode('utf-8'),
             capture_output=True
         )
@@ -66,6 +91,7 @@ def parse_input(text):
     # Auto-detection if no source specified
     if source_lang == 'auto':
         try:
+            from fast_langdetect import detect
             detected = detect(content)
             # fast-langdetect returns list or dict depending on version
             s_code = detected[0]['lang'] if isinstance(detected, list) else detected.get('lang', 'en')
@@ -81,6 +107,8 @@ def parse_input(text):
 
 def translate_offline(source, target, text):
     try:
+        import argostranslate.package
+        import argostranslate.translate
         installed = argostranslate.translate.get_installed_languages()
         from_lang = next((l for l in installed if l.code == source), None)
         to_lang = next((l for l in installed if l.code == target), None)
@@ -97,6 +125,7 @@ def translate_deepl(source, target, text):
     if not DEEPL_AUTH_KEY:
         return "Error: DeepL API Key missing in script."
     
+    import requests
     url = "https://api-free.deepl.com/v2/translate"
     params = {
         "auth_key": DEEPL_AUTH_KEY,
@@ -129,15 +158,34 @@ def main():
         return
 
     # 2. Process & Translate
-    # Optional: Notify user work is happening (good for DeepL latency)
-    # notify("Translating...", "Please wait")
-    
     src, tgt, text_to_translate = parse_input(user_input)
     
-    if mode == "deepl":
-        final_text = translate_deepl(src, tgt, text_to_translate)
-    else:
-        final_text = translate_offline(src, tgt, text_to_translate)
+    if not text_to_translate:
+        notify("Error", "No text to translate")
+        return
+    
+    # Show loading wofi immediately (non-blocking)
+    loading_proc = show_wofi_loading()
+    
+    try:
+        if mode == "deepl":
+            final_text = translate_deepl(src, tgt, text_to_translate)
+        else:
+            final_text = translate_offline(src, tgt, text_to_translate)
+    except Exception as e:
+        loading_proc.terminate()
+        loading_proc.wait()
+        notify("Translation Error", str(e))
+        return
+    
+    # Close loading wofi
+    loading_proc.terminate()
+    loading_proc.wait()
+    
+    # Check for error responses from translation functions
+    if final_text.startswith(("Error:", "Offline Error:", "DeepL Error:", "Connection Error:")):
+        notify("Translation Failed", final_text)
+        return
 
     # 3. Show Result
     # User sees result in Wofi. Hitting Enter returns True.

@@ -10,7 +10,7 @@ pip install argostranslate fast-langdetect requests
 Download Models:
 
 ```bash
-python3 ~/.local/bin/install_models.py
+python3 ./bin/install_models.py
 ```
 
 Set DeepL API Key (Optional): Open `translate_manager.py` in your text editor and paste your key into the `DEEPL_AUTH_KEY` variable at the top.
