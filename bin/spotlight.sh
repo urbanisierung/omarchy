@@ -37,12 +37,12 @@ if [ -f "$CHROME_BOOKMARKS" ]; then
     BOOKMARKS=$(extract_bookmarks "$CHROME_BOOKMARKS")
 fi
 
-# Prepare bookmark names for display (prefixed with 🔖)
+# Prepare bookmark names for display (prefixed with 🔖), sorted alphabetically
 BOOKMARK_LIST=""
 if [ -n "$BOOKMARKS" ]; then
     BOOKMARK_LIST=$(echo "$BOOKMARKS" | while IFS=$'\t' read -r name url; do
         echo "🔖 $name"
-    done)
+    done | sort -f)
 fi
 
 # 3. Launch Wofi in dmenu mode
