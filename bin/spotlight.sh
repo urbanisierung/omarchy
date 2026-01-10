@@ -8,12 +8,8 @@ FILE_MANAGER="xdg-open"
 # Chrome bookmarks file location
 CHROME_BOOKMARKS="$HOME/.config/google-chrome/Default/Bookmarks"
 
-# Cloud storage and file system paths
-DROPBOX_PATH="$HOME/Dropbox"
-GOOGLE_DRIVE_PATHS=("$HOME/Google Drive" "$HOME/GoogleDrive")
-HOME_PATH="$HOME"
-
 # File search configuration
+HOME_PATH="$HOME"
 MAX_FILE_RESULTS=10
 FILE_SEARCH_DEPTH=5
 
@@ -64,17 +60,6 @@ search_files() {
     
     # Use find to search for files matching the query (case-insensitive)
     find "$search_path" -maxdepth "$FILE_SEARCH_DEPTH" -type f -iname "*${query}*" 2>/dev/null | head -n "$max_results"
-}
-
-# Function to get Google Drive path (handles both common naming conventions)
-get_google_drive_path() {
-    for path in "${GOOGLE_DRIVE_PATHS[@]}"; do
-        if [ -d "$path" ]; then
-            echo "$path"
-            return 0
-        fi
-    done
-    return 1
 }
 
 # 2. Get bookmarks list
@@ -157,6 +142,8 @@ URL_REDDIT="https://www.reddit.com/search/?q="
 URL_AMAZON="https://www.amazon.com/s?k="
 URL_MAPS="https://www.google.com/maps/search/"
 URL_TRANSLATE="https://translate.google.com/?sl=auto&tl=en&text="
+URL_DROPBOX="https://www.dropbox.com/search/personal?query="
+URL_GOOGLE_DRIVE="https://drive.google.com/drive/search?q="
 
 # 5. Search Logic
 if [[ "$QUERY" == "g: "* ]]; then
@@ -233,47 +220,16 @@ elif [[ "$QUERY" == "f: "* ]]; then
     fi
 
 elif [[ "$QUERY" == "db: "* ]]; then
-    # Dropbox search
+    # Dropbox web search
     TERM=${QUERY#db: }
-    TERM=$(echo "$TERM" | xargs)  # Trim whitespace
-    if [ -n "$TERM" ] && [ -d "$DROPBOX_PATH" ]; then
-        # Search in Dropbox directory
-        RESULTS=$(search_files "$DROPBOX_PATH" "$TERM")
-        if [ -n "$RESULTS" ]; then
-            # Let user select from results
-            SELECTED=$(echo "$RESULTS" | wofi --dmenu --prompt "Select file from Dropbox..." --style "$HOME/.config/wofi/search.css" --width 600)
-            if [ -n "$SELECTED" ]; then
-                $FILE_MANAGER "$SELECTED"
-            fi
-        else
-            notify-send "Spotlight Search" "No files found in Dropbox matching '$TERM'"
-        fi
-    elif [ ! -d "$DROPBOX_PATH" ]; then
-        notify-send "Spotlight Search" "Dropbox folder not found at $DROPBOX_PATH"
-    fi
+    TERM=${TERM// /+}
+    $ACTIVE_BROWSER "${URL_DROPBOX}${TERM}"
 
 elif [[ "$QUERY" == "gd: "* ]]; then
-    # Google Drive search
+    # Google Drive web search
     TERM=${QUERY#gd: }
-    TERM=$(echo "$TERM" | xargs)  # Trim whitespace
-    if [ -n "$TERM" ]; then
-        GDRIVE_PATH=$(get_google_drive_path)
-        if [ $? -eq 0 ]; then
-            # Search in Google Drive directory
-            RESULTS=$(search_files "$GDRIVE_PATH" "$TERM")
-            if [ -n "$RESULTS" ]; then
-                # Let user select from results
-                SELECTED=$(echo "$RESULTS" | wofi --dmenu --prompt "Select file from Google Drive..." --style "$HOME/.config/wofi/search.css" --width 600)
-                if [ -n "$SELECTED" ]; then
-                    $FILE_MANAGER "$SELECTED"
-                fi
-            else
-                notify-send "Spotlight Search" "No files found in Google Drive matching '$TERM'"
-            fi
-        else
-            notify-send "Spotlight Search" "Google Drive folder not found"
-        fi
-    fi
+    TERM=${TERM// /+}
+    $ACTIVE_BROWSER "${URL_GOOGLE_DRIVE}${TERM}"
 
 else
     # Default: DuckDuckGo
