@@ -3,9 +3,19 @@
 # 1. Configuration
 BROWSER="xdg-open"
 BROWSER_INCOGNITO="google-chrome --incognito"
+FILE_MANAGER="xdg-open"
 
 # Chrome bookmarks file location
 CHROME_BOOKMARKS="$HOME/.config/google-chrome/Default/Bookmarks"
+
+# Cloud storage and file system paths
+DROPBOX_PATH="$HOME/Dropbox"
+GOOGLE_DRIVE_PATHS=("$HOME/Google Drive" "$HOME/GoogleDrive")
+HOME_PATH="$HOME"
+
+# File search configuration
+MAX_FILE_RESULTS=10
+FILE_SEARCH_DEPTH=5
 
 # Function to extract bookmarks recursively from Chrome's JSON
 extract_bookmarks() {
@@ -39,6 +49,31 @@ is_url() {
     if [[ "$input" =~ ^https?:// ]] || [[ "$input" =~ ^[^[:space:]]+\.[a-zA-Z]{2,}(/.*)?$ ]]; then
         return 0
     fi
+    return 1
+}
+
+# Function to search for files in a directory
+search_files() {
+    local search_path="$1"
+    local query="$2"
+    local max_results="${3:-$MAX_FILE_RESULTS}"
+    
+    if [ ! -d "$search_path" ]; then
+        return
+    fi
+    
+    # Use find to search for files matching the query (case-insensitive)
+    find "$search_path" -maxdepth "$FILE_SEARCH_DEPTH" -type f -iname "*${query}*" 2>/dev/null | head -n "$max_results"
+}
+
+# Function to get Google Drive path (handles both common naming conventions)
+get_google_drive_path() {
+    for path in "${GOOGLE_DRIVE_PATHS[@]}"; do
+        if [ -d "$path" ]; then
+            echo "$path"
+            return 0
+        fi
+    done
     return 1
 }
 
@@ -178,6 +213,67 @@ elif [[ "$QUERY" == "t: "* ]]; then
     # URL encode the text for translate
     TERM=$(echo "$TERM" | jq -sRr @uri)
     $ACTIVE_BROWSER "${URL_TRANSLATE}${TERM}"
+
+elif [[ "$QUERY" == "f: "* ]]; then
+    # Local file system search
+    TERM=${QUERY#f: }
+    TERM=$(echo "$TERM" | xargs)  # Trim whitespace
+    if [ -n "$TERM" ]; then
+        # Search in home directory
+        RESULTS=$(search_files "$HOME_PATH" "$TERM")
+        if [ -n "$RESULTS" ]; then
+            # Let user select from results
+            SELECTED=$(echo "$RESULTS" | wofi --dmenu --prompt "Select file..." --style "$HOME/.config/wofi/search.css" --width 600)
+            if [ -n "$SELECTED" ]; then
+                $FILE_MANAGER "$SELECTED"
+            fi
+        else
+            notify-send "Spotlight Search" "No files found matching '$TERM'"
+        fi
+    fi
+
+elif [[ "$QUERY" == "db: "* ]]; then
+    # Dropbox search
+    TERM=${QUERY#db: }
+    TERM=$(echo "$TERM" | xargs)  # Trim whitespace
+    if [ -n "$TERM" ] && [ -d "$DROPBOX_PATH" ]; then
+        # Search in Dropbox directory
+        RESULTS=$(search_files "$DROPBOX_PATH" "$TERM")
+        if [ -n "$RESULTS" ]; then
+            # Let user select from results
+            SELECTED=$(echo "$RESULTS" | wofi --dmenu --prompt "Select file from Dropbox..." --style "$HOME/.config/wofi/search.css" --width 600)
+            if [ -n "$SELECTED" ]; then
+                $FILE_MANAGER "$SELECTED"
+            fi
+        else
+            notify-send "Spotlight Search" "No files found in Dropbox matching '$TERM'"
+        fi
+    elif [ ! -d "$DROPBOX_PATH" ]; then
+        notify-send "Spotlight Search" "Dropbox folder not found at $DROPBOX_PATH"
+    fi
+
+elif [[ "$QUERY" == "gd: "* ]]; then
+    # Google Drive search
+    TERM=${QUERY#gd: }
+    TERM=$(echo "$TERM" | xargs)  # Trim whitespace
+    if [ -n "$TERM" ]; then
+        GDRIVE_PATH=$(get_google_drive_path)
+        if [ $? -eq 0 ]; then
+            # Search in Google Drive directory
+            RESULTS=$(search_files "$GDRIVE_PATH" "$TERM")
+            if [ -n "$RESULTS" ]; then
+                # Let user select from results
+                SELECTED=$(echo "$RESULTS" | wofi --dmenu --prompt "Select file from Google Drive..." --style "$HOME/.config/wofi/search.css" --width 600)
+                if [ -n "$SELECTED" ]; then
+                    $FILE_MANAGER "$SELECTED"
+                fi
+            else
+                notify-send "Spotlight Search" "No files found in Google Drive matching '$TERM'"
+            fi
+        else
+            notify-send "Spotlight Search" "Google Drive folder not found"
+        fi
+    fi
 
 else
     # Default: DuckDuckGo
