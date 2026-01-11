@@ -212,7 +212,8 @@ elif [[ "$QUERY" == "f: "* ]]; then
             # Let user select from results
             SELECTED=$(echo "$RESULTS" | wofi --dmenu --prompt "Select file..." --style "$HOME/.config/wofi/search.css" --width 600)
             if [ -n "$SELECTED" ]; then
-                $FILE_MANAGER "$SELECTED"
+                # Open file manager in the directory with the file selected
+                nautilus --select "$SELECTED"
             fi
         else
             notify-send "Spotlight Search" "No files found matching '$TERM'"
