@@ -132,6 +132,7 @@ if is_url "$QUERY"; then
 fi
 
 # Define Search URLs
+URL_ECOSIA="https://www.ecosia.org/search?q="
 URL_DDG="https://duckduckgo.com/?q="
 URL_GOOGLE="https://www.google.com/search?q="
 URL_YOUTUBE="https://www.youtube.com/results?search_query="
@@ -146,7 +147,13 @@ URL_DROPBOX="https://www.dropbox.com/search/personal?query="
 URL_GOOGLE_DRIVE="https://drive.google.com/drive/search?q="
 
 # 5. Search Logic
-if [[ "$QUERY" == "g: "* ]]; then
+if [[ "$QUERY" == "d: "* ]]; then
+    # DuckDuckGo
+    TERM=${QUERY#d: }
+    TERM=${TERM// /+}
+    $ACTIVE_BROWSER "${URL_DDG}${TERM}"
+
+elif [[ "$QUERY" == "g: "* ]]; then
     # Google
     TERM=${QUERY#g: }
     TERM=${TERM// /+}
@@ -233,7 +240,7 @@ elif [[ "$QUERY" == "gd: "* ]]; then
     $ACTIVE_BROWSER "${URL_GOOGLE_DRIVE}${TERM}"
 
 else
-    # Default: DuckDuckGo
+    # Default: Ecosia
     TERM=${QUERY// /+}
-    $ACTIVE_BROWSER "${URL_DDG}${TERM}"
+    $ACTIVE_BROWSER "${URL_ECOSIA}${TERM}"
 fi
