@@ -127,14 +127,20 @@ def translate_deepl(source, target, text):
     
     import requests
     url = "https://api-free.deepl.com/v2/translate"
-    params = {
-        "auth_key": DEEPL_AUTH_KEY,
-        "text": text,
-        "source_lang": source.upper(),
+    headers = {
+        "Authorization": f"DeepL-Auth-Key {DEEPL_AUTH_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "text": [text],
         "target_lang": target.upper()
     }
+    # Only include source_lang if not auto-detecting
+    if source and source != 'auto':
+        payload["source_lang"] = source.upper()
+    
     try:
-        r = requests.post(url, data=params)
+        r = requests.post(url, headers=headers, json=payload)
         data = r.json()
         if "translations" in data:
             return data["translations"][0]["text"]
