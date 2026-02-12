@@ -8,7 +8,7 @@ Read more at [omarchy.org](https://omarchy.org).
 
 Install: wget -qO- https://u11g.com/install | bash
 
-TODOs: Install eza
+TODOs: Install eza, yazi
 
 Graphics Intel: https://fostips.com/hardware-acceleration-video-fedora/?amp=1
 Start Zoom:
