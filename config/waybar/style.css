@@ -58,3 +58,8 @@ tooltip label {
 }
 
 @import "../omarchy/current/theme/waybar.css";
+
+/* Occupied workspaces (with at least one window) */
+#workspaces button:not(.empty) {
+  color: #89b4fa;
+}
