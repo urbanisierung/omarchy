@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Name=Modeler
+Comment=Camunda Modeler
+Exec=/usr/local/bin/modeler
+Terminal=false
+Type=Application
+Categories=Development;
+StartupNotify=true
