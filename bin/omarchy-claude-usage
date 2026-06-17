@@ -1,0 +1,391 @@
+#!/bin/bash
+
+# Show Claude usage in a wofi menu — the same numbers as the web UI usage page.
+#
+# Data comes from Anthropic's OAuth usage endpoint (GET /api/oauth/usage), which
+# is exactly what Claude Code's own `/usage` view and the web UI render:
+#   - rolling rate-limit windows (5h session, 7d all-models, 7d Opus, ...)
+#   - spend against a monthly limit (where applicable)
+# Each is shown as a utilization % with its reset time.
+#
+# Authentication uses the OAuth token stored in <config>/.credentials.json.
+# That token expires often, so when it is stale this script refreshes it via the
+# same endpoint Claude Code uses and writes the rotated token back (atomically,
+# mode 600), so the Claude CLI keeps working too.
+#
+# Multiple accounts can be configured in:
+#   ~/.config/omarchy/claude-usage.conf
+# One account per line:  name = /path/to/.claude   (the dir with .credentials.json)
+# A template is created automatically on first run.
+#
+# Navigation:
+# - Top menu lists each account with a one-line summary.
+# - Selecting an account shows the full breakdown.
+# - "↻ Refresh" re-fetches; "← Back" returns to the list; Esc closes.
+
+set -euo pipefail
+
+CONFIG_FILE="${OMARCHY_CLAUDE_USAGE_CONF:-$HOME/.config/omarchy/claude-usage.conf}"
+
+WOFI_ACCOUNTS=(-dmenu -i --width 60% --height 55% -p "Claude usage" -O default)
+WOFI_DETAIL=(-dmenu -i --width 60% --height 75% -p "Claude usage" -O default)
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "Error: python3 is required." >&2
+  exit 1
+fi
+
+if [ ! -f "$CONFIG_FILE" ]; then
+  mkdir -p "$(dirname "$CONFIG_FILE")"
+  cat >"$CONFIG_FILE" <<'EOF'
+# Omarchy Claude usage accounts.
+# One account per line:  name = /path/to/.claude
+# The path is the config dir that contains .credentials.json.
+# Lines starting with # are ignored. ~ expands to your home directory.
+#
+# Add extra accounts by pointing at their CLAUDE_CONFIG_DIR, e.g.:
+#   work = ~/.config/claude-work
+default = ~/.claude
+EOF
+fi
+
+# Python worker. Modes:
+#   list                  -> TSV: name <TAB> display-line
+#   detail <account-name> -> human readable breakdown, one entry per line
+run_py() {
+  CLAUDE_USAGE_CONF="$CONFIG_FILE" python3 - "$@" <<'PY'
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+
+CONFIG_FILE = os.environ["CLAUDE_USAGE_CONF"]
+CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
+USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+OAUTH_BETA = "oauth-2025-04-20"
+UA = "omarchy-claude-usage"
+
+# Friendly labels for known rolling-window keys. Unknown keys are humanized.
+WINDOW_LABELS = {
+    "five_hour": "Session (5h)",
+    "seven_day": "Weekly (all models)",
+    "seven_day_opus": "Weekly (Opus)",
+    "seven_day_sonnet": "Weekly (Sonnet)",
+    "seven_day_oauth_apps": "Weekly (OAuth apps)",
+    "seven_day_cowork": "Weekly (Cowork)",
+}
+
+# Short labels + display order for the compact account-list summary line.
+SUMMARY_WINDOWS = [
+    ("five_hour", "5h"),
+    ("seven_day", "7d"),
+    ("seven_day_opus", "Opus"),
+    ("seven_day_sonnet", "Sonnet"),
+]
+
+
+def read_accounts():
+    accounts = []
+    try:
+        with open(CONFIG_FILE, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                name, path = line.split("=", 1)
+                name = name.strip()
+                path = os.path.expanduser(path.strip())
+                if name:
+                    accounts.append((name, path))
+    except FileNotFoundError:
+        pass
+    if not accounts:
+        accounts.append(("default", os.path.expanduser("~/.claude")))
+    return accounts
+
+
+def load_oauth(config_dir):
+    cred = os.path.join(config_dir, ".credentials.json")
+    with open(cred, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    return cred, doc, doc.get("claudeAiOauth") or {}
+
+
+def refresh_token(cred_path, doc, oauth):
+    body = json.dumps({
+        "grant_type": "refresh_token",
+        "refresh_token": oauth["refreshToken"],
+        "client_id": CLIENT_ID,
+    }).encode()
+    req = urllib.request.Request(TOKEN_URL, data=body, method="POST", headers={
+        "Content-Type": "application/json",
+        "anthropic-beta": OAUTH_BETA,
+        "User-Agent": UA,
+    })
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        r = json.load(resp)
+    oauth["accessToken"] = r["access_token"]
+    if r.get("refresh_token"):
+        oauth["refreshToken"] = r["refresh_token"]
+    oauth["expiresAt"] = int(time.time() * 1000) + int(r.get("expires_in", 3600)) * 1000
+    doc["claudeAiOauth"] = oauth
+    tmp = cred_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, cred_path)
+    return oauth["accessToken"]
+
+
+def get_access_token(config_dir):
+    cred_path, doc, oauth = load_oauth(config_dir)
+    if not oauth.get("accessToken"):
+        raise RuntimeError("no OAuth token (run `claude` to sign in)")
+    expires_at = oauth.get("expiresAt", 0)
+    if time.time() * 1000 >= expires_at - 60000:
+        return refresh_token(cred_path, doc, oauth)
+    return oauth["accessToken"]
+
+
+def fetch_usage(config_dir):
+    token = get_access_token(config_dir)
+    req = urllib.request.Request(USAGE_URL, headers={
+        "Authorization": "Bearer " + token,
+        "anthropic-beta": OAUTH_BETA,
+        "anthropic-version": "2023-06-01",
+        "User-Agent": UA,
+    })
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.load(resp)
+
+
+def humanize(key):
+    return key.replace("_", " ").capitalize()
+
+
+def fmt_reset(value):
+    if not value:
+        return ""
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local = dt.astimezone()
+    delta = local - datetime.now().astimezone()
+    secs = int(delta.total_seconds())
+    if secs <= 0:
+        rel = "now"
+    elif secs < 3600:
+        rel = f"{secs // 60}m"
+    elif secs < 86400:
+        rel = f"{secs // 3600}h {secs % 3600 // 60}m"
+    else:
+        rel = f"{secs // 86400}d {secs % 86400 // 3600}h"
+    return f"resets in {rel} ({local:%a %d %b %H:%M})"
+
+
+def bar(pct, width=12):
+    pct = max(0.0, min(100.0, float(pct)))
+    filled = int(round(pct / 100 * width))
+    return "█" * filled + "░" * (width - filled)
+
+
+def money(minor, exponent, currency):
+    val = minor / (10 ** exponent)
+    sym = {"USD": "$", "EUR": "€", "GBP": "£"}.get(currency, currency + " ")
+    return f"{sym}{val:,.2f}"
+
+
+def windows_from(data):
+    """Return [(label, utilization, resets_at)] for every populated window."""
+    out = []
+    for key, val in data.items():
+        if key in ("limits", "spend", "extra_usage"):
+            continue
+        if isinstance(val, dict) and val.get("utilization") is not None:
+            label = WINDOW_LABELS.get(key, humanize(key))
+            out.append((label, float(val["utilization"]), val.get("resets_at")))
+    out.sort(key=lambda x: -x[1])
+    return out
+
+
+def spend_from(data):
+    s = data.get("spend")
+    if isinstance(s, dict) and s.get("enabled"):
+        return s
+    return None
+
+
+def summarize(data):
+    parts = []
+    # Show the canonical rate-limit windows (5h, 7d, scoped) in a fixed order.
+    shown = set()
+    for key, short in SUMMARY_WINDOWS:
+        val = data.get(key)
+        if isinstance(val, dict) and val.get("utilization") is not None:
+            parts.append(f"{short} {float(val['utilization']):.0f}%")
+            shown.add(key)
+    # Include any other populated windows not covered above.
+    for label, pct, _ in windows_from(data):
+        key = next((k for k, v in WINDOW_LABELS.items() if v == label), None)
+        if key in shown:
+            continue
+        parts.append(f"{label} {pct:.0f}%")
+    s = spend_from(data)
+    if s:
+        used = s.get("used", {})
+        used_s = money(used.get("amount_minor", 0), used.get("exponent", 2),
+                       used.get("currency", "USD"))
+        limit = s.get("limit") or {}
+        if limit:
+            limit_s = money(limit.get("amount_minor", 0), limit.get("exponent", 2),
+                            limit.get("currency", "USD"))
+            parts.append(f"spend {used_s} / {limit_s} ({s.get('percent', 0)}%)")
+        else:
+            parts.append(f"spend {used_s}")
+    if not parts:
+        parts.append("no usage limits reported")
+    return "  •  ".join(parts)
+
+
+def cmd_list(accounts):
+    out = []
+    for name, path in accounts:
+        try:
+            data = fetch_usage(path)
+            summary = summarize(data)
+        except FileNotFoundError:
+            summary = "no credentials found"
+        except urllib.error.HTTPError as e:
+            summary = f"error {e.code} (open Claude to re-auth)"
+        except Exception as e:  # noqa: BLE001 - surface any failure in the menu
+            summary = f"error: {e}"
+        out.append(f"{name}\t{name:<10}  {summary}")
+    sys.stdout.write("\n".join(out) + "\n")
+
+
+def cmd_detail(accounts, wanted):
+    path = next((p for n, p in accounts if n == wanted), None)
+    lines = ["← Back", "↻ Refresh"]
+    if path is None:
+        lines.append("Unknown account.")
+        sys.stdout.write("\n".join(lines) + "\n")
+        return
+    try:
+        data = fetch_usage(path)
+    except FileNotFoundError:
+        lines.append(f"No .credentials.json in {path}")
+        sys.stdout.write("\n".join(lines) + "\n")
+        return
+    except Exception as e:  # noqa: BLE001
+        lines.append(f"Could not load usage: {e}")
+        lines.append("Tip: open Claude Code once to re-authenticate.")
+        sys.stdout.write("\n".join(lines) + "\n")
+        return
+
+    lines.append(f"━━ {wanted}")
+    tier = data.get("rate_limit_tier")
+    if tier:
+        lines.append(f"plan tier: {tier}")
+
+    wins = windows_from(data)
+    if wins:
+        lines.append("── rate limits ──")
+        for label, pct, resets in wins:
+            reset_txt = fmt_reset(resets)
+            lines.append(f"{label:<22} {pct:5.1f}%  {bar(pct)}")
+            if reset_txt:
+                lines.append(f"{'':<22}        {reset_txt}")
+
+    s = spend_from(data)
+    if s:
+        lines.append("── spend ──")
+        used = s.get("used", {})
+        limit = s.get("limit", {})
+        pct = s.get("percent", 0)
+        used_s = money(used.get("amount_minor", 0), used.get("exponent", 2),
+                       used.get("currency", "USD"))
+        limit_s = money(limit.get("amount_minor", 0), limit.get("exponent", 2),
+                        limit.get("currency", "USD"))
+        sev = s.get("severity", "")
+        lines.append(f"{'Monthly spend':<22} {pct:5.1f}%  {bar(pct)}")
+        lines.append(f"{'':<22}        {used_s} of {limit_s}"
+                     + (f"  [{sev}]" if sev and sev != "normal" else ""))
+
+    extra = data.get("extra_usage")
+    if isinstance(extra, dict) and extra.get("is_enabled") and not s:
+        util = extra.get("utilization", 0) or 0
+        used_c = extra.get("used_credits", 0) or 0
+        limit_c = extra.get("monthly_limit", 0) or 0
+        cur = extra.get("currency", "USD")
+        dp = extra.get("decimal_places", 2)
+        lines.append("── extra usage ──")
+        lines.append(f"{'Extra credits':<22} {util:5.1f}%  {bar(util)}")
+        lines.append(f"{'':<22}        "
+                     f"{money(used_c, dp, cur)} of {money(limit_c, dp, cur)}")
+
+    if not wins and not s and not (isinstance(extra, dict) and extra.get("is_enabled")):
+        lines.append("No usage limits reported for this account.")
+
+    sys.stdout.write("\n".join(lines) + "\n")
+
+
+def main():
+    accounts = read_accounts()
+    mode = sys.argv[1] if len(sys.argv) > 1 else "list"
+    if mode == "detail":
+        cmd_detail(accounts, sys.argv[2] if len(sys.argv) > 2 else "")
+    else:
+        cmd_list(accounts)
+
+
+main()
+PY
+}
+
+show_detail() {
+  local account="$1"
+  while true; do
+    local chosen
+    chosen=$(run_py detail "$account" |
+      flock --nonblock /tmp/.wofi.lock -c "wofi ${WOFI_DETAIL[*]}") || true
+    if [ -z "$chosen" ] || [[ "$chosen" == "← Back"* ]]; then
+      return
+    fi
+    # "↻ Refresh" (or any informational line) just redraws with fresh data.
+  done
+}
+
+declare -A NAME_BY_DISPLAY=()
+MENU_LINES=()
+while IFS=$'\t' read -r name display; do
+  [ -z "$name" ] && continue
+  NAME_BY_DISPLAY["$display"]="$name"
+  MENU_LINES+=("$display")
+done < <(run_py list)
+
+if [ ${#MENU_LINES[@]} -eq 0 ]; then
+  exit 0
+fi
+
+if [ ${#MENU_LINES[@]} -eq 1 ]; then
+  only_name="${NAME_BY_DISPLAY[${MENU_LINES[0]}]}"
+  show_detail "$only_name"
+  exit 0
+fi
+
+while true; do
+  menu_text=$(printf '%s\n' "${MENU_LINES[@]}")
+  chosen=$(echo "$menu_text" |
+    flock --nonblock /tmp/.wofi.lock -c "wofi ${WOFI_ACCOUNTS[*]}") || true
+  [ -z "$chosen" ] && exit 0
+  account="${NAME_BY_DISPLAY[$chosen]:-}"
+  [ -z "$account" ] && exit 0
+  show_detail "$account"
+done
