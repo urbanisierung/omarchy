@@ -87,6 +87,18 @@ SUMMARY_WINDOWS = [
     ("seven_day_sonnet", "Sonnet"),
 ]
 
+# Total length of each rolling window, in seconds. Used to compute how much of
+# the window's *time* has elapsed (the "pace"), so usage% can be compared
+# against a constant burn rate. Keys not listed have no known fixed length.
+WINDOW_SECONDS = {
+    "five_hour": 5 * 3600,
+    "seven_day": 7 * 86400,
+    "seven_day_opus": 7 * 86400,
+    "seven_day_sonnet": 7 * 86400,
+    "seven_day_oauth_apps": 7 * 86400,
+    "seven_day_cowork": 7 * 86400,
+}
+
 
 def read_accounts():
     accounts = []
@@ -196,6 +208,26 @@ def bar(pct, width=12):
     return "█" * filled + "░" * (width - filled)
 
 
+def pace_pct(key, resets_at):
+    """Percent of the window's time that has elapsed, or None if unknown.
+
+    Derived from the known window length and its reset time:
+      start = resets_at - length;  elapsed = (now - start) / length
+    """
+    length = WINDOW_SECONDS.get(key)
+    if not length or not resets_at:
+        return None
+    try:
+        dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    remaining = (dt - datetime.now(timezone.utc)).total_seconds()
+    elapsed = length - remaining
+    return max(0.0, min(100.0, elapsed / length * 100))
+
+
 def money(minor, exponent, currency):
     val = minor / (10 ** exponent)
     sym = {"USD": "$", "EUR": "€", "GBP": "£"}.get(currency, currency + " ")
@@ -203,15 +235,15 @@ def money(minor, exponent, currency):
 
 
 def windows_from(data):
-    """Return [(label, utilization, resets_at)] for every populated window."""
+    """Return [(key, label, utilization, resets_at)] for every populated window."""
     out = []
     for key, val in data.items():
         if key in ("limits", "spend", "extra_usage"):
             continue
         if isinstance(val, dict) and val.get("utilization") is not None:
             label = WINDOW_LABELS.get(key, humanize(key))
-            out.append((label, float(val["utilization"]), val.get("resets_at")))
-    out.sort(key=lambda x: -x[1])
+            out.append((key, label, float(val["utilization"]), val.get("resets_at")))
+    out.sort(key=lambda x: -x[2])
     return out
 
 
@@ -225,18 +257,24 @@ def spend_from(data):
 def summarize(data):
     parts = []
     # Show the canonical rate-limit windows (5h, 7d, scoped) in a fixed order.
+    # Each is rendered as  usage% (pace%)  where pace% is how much of the
+    # window's time has elapsed, so over/under-pacing is obvious at a glance.
     shown = set()
     for key, short in SUMMARY_WINDOWS:
         val = data.get(key)
         if isinstance(val, dict) and val.get("utilization") is not None:
-            parts.append(f"{short} {float(val['utilization']):.0f}%")
+            util = float(val["utilization"])
+            pace = pace_pct(key, val.get("resets_at"))
+            pace_txt = f" ({pace:.0f}%)" if pace is not None else ""
+            parts.append(f"{short} {util:.0f}%{pace_txt}")
             shown.add(key)
     # Include any other populated windows not covered above.
-    for label, pct, _ in windows_from(data):
-        key = next((k for k, v in WINDOW_LABELS.items() if v == label), None)
+    for key, label, pct, resets in windows_from(data):
         if key in shown:
             continue
-        parts.append(f"{label} {pct:.0f}%")
+        pace = pace_pct(key, resets)
+        pace_txt = f" ({pace:.0f}%)" if pace is not None else ""
+        parts.append(f"{label} {pct:.0f}%{pace_txt}")
     s = spend_from(data)
     if s:
         used = s.get("used", {})
@@ -296,10 +334,12 @@ def cmd_detail(accounts, wanted):
 
     wins = windows_from(data)
     if wins:
-        lines.append("── rate limits ──")
-        for label, pct, resets in wins:
+        lines.append("── rate limits ──  (used%, pace = window time elapsed)")
+        for key, label, pct, resets in wins:
+            pace = pace_pct(key, resets)
+            pace_txt = f" (pace {pace:.0f}%)" if pace is not None else ""
+            lines.append(f"{label:<22} {pct:5.1f}%{pace_txt}  {bar(pct)}")
             reset_txt = fmt_reset(resets)
-            lines.append(f"{label:<22} {pct:5.1f}%  {bar(pct)}")
             if reset_txt:
                 lines.append(f"{'':<22}        {reset_txt}")
 
