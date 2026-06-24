@@ -1,0 +1,208 @@
+#!/bin/bash
+
+# Quick reminder/timer manager in a wofi menu — same dmenu style as
+# omarchy-claude-usage.
+#
+# Each reminder is a transient systemd --user timer that fires a desktop
+# notification after the chosen delay. Because they are real systemd timers
+# they survive closing the terminal and can be listed/cancelled cleanly.
+#
+# Menu:
+#   - Top entry "＋ New reminder" takes one line: the first word is the time,
+#     the rest is the message — e.g. "5m call mom", "12:13 standup", "1h30m tea".
+#   - Every pending reminder is listed with its remaining time; selecting one
+#     lets you cancel it. Esc closes.
+#
+# When a reminder fires it shows a sticky (critical) notification. Clicking it
+# opens a Snooze / Ack chooser: Snooze re-fires the same reminder, Ack (or
+# dismissing the notification) clears it.
+#
+# Time accepts either a duration or an absolute clock time:
+#   duration: bare number = minutes (e.g. 25), or h/m/s parts: 90s 25m 1h 1h30m
+#   absolute: HH:MM (24h) — today, or tomorrow if that time already passed
+
+set -euo pipefail
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-remind"
+mkdir -p "$STATE_DIR"
+SELF="$(readlink -f "$0")"
+SNOOZE_MINS=(5 15 30 60)  # "Snooze" durations (minutes) offered when a reminder fires
+
+WOFI=(-dmenu -i --width 45% --height 50% -O default)
+
+# wofi_menu PROMPT — options on stdin, chosen/typed value on stdout.
+wofi_menu() {
+  flock --nonblock /tmp/.wofi.lock wofi "${WOFI[@]}" -p "$1" 2>/dev/null
+}
+
+# parse_duration STR -> seconds on stdout, non-zero exit on bad input.
+parse_duration() {
+  local s="${1// /}" total=0 rest
+  [ -z "$s" ] && return 1
+  if [[ "$s" =~ ^[0-9]+$ ]]; then echo $(( s * 60 )); return 0; fi
+  rest="$s"
+  while [ -n "$rest" ]; do
+    if [[ "$rest" =~ ^([0-9]+)(h|hr|hrs|hour|hours)(.*)$ ]]; then
+      total=$(( total + BASH_REMATCH[1] * 3600 )); rest="${BASH_REMATCH[3]}"
+    elif [[ "$rest" =~ ^([0-9]+)(m|min|mins|minute|minutes)(.*)$ ]]; then
+      total=$(( total + BASH_REMATCH[1] * 60 )); rest="${BASH_REMATCH[3]}"
+    elif [[ "$rest" =~ ^([0-9]+)(s|sec|secs|second|seconds)(.*)$ ]]; then
+      total=$(( total + BASH_REMATCH[1] )); rest="${BASH_REMATCH[3]}"
+    else
+      return 1
+    fi
+  done
+  [ "$total" -gt 0 ] || return 1
+  echo "$total"
+}
+
+# spec_to_secs SPEC -> seconds from now on stdout, non-zero on bad input.
+# SPEC is either a duration (see parse_duration) or an absolute HH:MM time.
+spec_to_secs() {
+  local spec="$1" h m now target
+  if [[ "$spec" =~ ^([0-9]{1,2}):([0-9]{2})$ ]]; then
+    h=$(( 10#${BASH_REMATCH[1]} )); m=$(( 10#${BASH_REMATCH[2]} ))
+    (( h < 24 && m < 60 )) || return 1
+    now=$(date +%s)
+    target=$(date -d "today $h:$m" +%s 2>/dev/null) || return 1
+    (( target <= now )) && target=$(date -d "tomorrow $h:$m" +%s)
+    echo $(( target - now ))
+    return 0
+  fi
+  parse_duration "$spec"
+}
+
+# fmt_span SECONDS -> compact human string (1h05m / 24m / 45s).
+fmt_span() {
+  local s="$1"
+  (( s < 0 )) && s=0
+  local h=$(( s / 3600 )) m=$(( (s % 3600) / 60 )) sec=$(( s % 60 ))
+  if (( h > 0 )); then printf '%dh%02dm' "$h" "$m"
+  elif (( m > 0 )); then printf '%dm' "$m"
+  else printf '%ds' "$sec"; fi
+}
+
+# schedule SECONDS MESSAGE -> creates a timer, echoes its id; non-zero on error.
+schedule() {
+  local secs="$1" msg="$2" id target
+  id="$(date +%s%N)"
+  target=$(( $(date +%s) + secs ))
+  printf '%s\n%s\n' "$target" "$msg" >"$STATE_DIR/$id"
+  if ! systemd-run --user --quiet \
+    --unit="omarchy-remind-$id" \
+    --description="omarchy reminder" \
+    --on-active="$secs" \
+    --timer-property=AccuracySec=1s \
+    "$SELF" __fire "$id"; then
+    rm -f "$STATE_DIR/$id"
+    return 1
+  fi
+  echo "$id"
+}
+
+# do_fire ID — invoked by the systemd timer when a reminder is due.
+do_fire() {
+  local id="$1"
+  local f="$STATE_DIR/$id" msg="Time's up" action choice mins
+  [ -f "$f" ] && msg="$(sed -n '2,$p' "$f")"
+  paplay /usr/share/sounds/freedesktop/stereo/complete.oga >/dev/null 2>&1 &
+  # -t 0 = never expire (overrides mako's default-timeout), critical = sticky.
+  # The notification stays until acked. mako fires the "default" action on click,
+  # which drops us into the Snooze / Ack chooser below.
+  action=$(notify-send --wait -t 0 -u critical -a "Reminder" \
+    --action="default=Snooze / Ack" \
+    "⏰ Reminder" "$msg" 2>/dev/null) || true
+  if [ "$action" = "default" ] && command -v wofi >/dev/null 2>&1; then
+    local options=()
+    for mins in "${SNOOZE_MINS[@]}"; do options+=("💤 Snooze $mins min"); done
+    options+=("✓ Ack")
+    choice=$(printf '%s\n' "${options[@]}" | wofi_menu "⏰ $msg") || true
+    if [[ "$choice" =~ ^💤\ Snooze\ ([0-9]+)\ min$ ]]; then
+      rm -f "$f"
+      schedule "$(( BASH_REMATCH[1] * 60 ))" "$msg" >/dev/null ||
+        notify-send -u critical -a "Reminder" "Reminder" "Failed to snooze"
+      return
+    fi
+  fi
+  rm -f "$f"  # Ack, dismissed, or no chooser available
+}
+
+# list_active -> "id<TAB>display" per pending reminder.
+list_active() {
+  local now unit id f target msg
+  now=$(date +%s)
+  while read -r unit; do
+    [ -z "$unit" ] && continue
+    id="${unit#omarchy-remind-}"; id="${id%.timer}"
+    f="$STATE_DIR/$id"
+    [ -f "$f" ] || continue
+    target=$(sed -n '1p' "$f")
+    msg=$(sed -n '2,$p' "$f")
+    printf '%s\t⏰ %s · %s\n' "$id" "$(fmt_span $(( target - now )))" "$msg"
+  done < <(systemctl --user list-units 'omarchy-remind-*.timer' \
+    --state=active --no-legend --plain 2>/dev/null | awk '{print $1}')
+}
+
+create_reminder() {
+  local input spec msg secs
+  input=$(printf '%s\n' "5m " "15m " "1h " "12:00 " |
+    wofi_menu "When + what? (e.g. 25m buy milk, 14:30 call mom)") || true
+  [ -z "$input" ] && return
+  spec="${input%% *}"
+  msg="${input#* }"
+  [ "$msg" = "$input" ] && msg=""   # no space → time only, no message
+  [ -z "$msg" ] && msg="Time's up"
+  if ! secs=$(spec_to_secs "$spec"); then
+    notify-send -u normal -a "Reminder" "Reminder" "Invalid time: $spec"
+    return
+  fi
+  if schedule "$secs" "$msg" >/dev/null; then
+    notify-send -u low -a "Reminder" "Reminder set" "In $(fmt_span "$secs") · $msg"
+  else
+    notify-send -u critical -a "Reminder" "Reminder" "Failed to schedule"
+  fi
+}
+
+manage_reminder() {
+  local id="$1" label="$2" action
+  action=$(printf '%s\n' "✖ Cancel reminder" "← Back" | wofi_menu "$label") || true
+  if [ "$action" = "✖ Cancel reminder" ]; then
+    systemctl --user stop "omarchy-remind-$id.timer" >/dev/null 2>&1 || true
+    systemctl --user stop "omarchy-remind-$id.service" >/dev/null 2>&1 || true
+    systemctl --user reset-failed "omarchy-remind-$id.service" >/dev/null 2>&1 || true
+    rm -f "$STATE_DIR/$id"
+    notify-send -u low -a "Reminder" "Reminder cancelled" "$label"
+  fi
+}
+
+# Hidden subcommand: fire a reminder (invoked by the systemd timer).
+if [ "${1:-}" = "__fire" ]; then
+  do_fire "${2:-}"
+  exit 0
+fi
+
+for cmd in wofi systemd-run systemctl notify-send; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo "Error: $cmd is required." >&2; exit 1; }
+done
+
+while true; do
+  declare -A ID_BY_DISPLAY=()
+  MENU_LINES=("＋ New reminder")
+  while IFS=$'\t' read -r id disp; do
+    [ -z "$id" ] && continue
+    ID_BY_DISPLAY["$disp"]="$id"
+    MENU_LINES+=("$disp")
+  done < <(list_active)
+
+  chosen=$(printf '%s\n' "${MENU_LINES[@]}" | wofi_menu "Reminders") || true
+  [ -z "$chosen" ] && exit 0
+
+  if [ "$chosen" = "＋ New reminder" ]; then
+    create_reminder
+    continue
+  fi
+
+  id="${ID_BY_DISPLAY[$chosen]:-}"
+  [ -z "$id" ] && continue
+  manage_reminder "$id" "$chosen"
+done
