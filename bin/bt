@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+
+# Configuration
+PORT="57731"
+SESSION_NAME="presentation"
+DOMAIN="terminal.localhost"
+
+# Check dependencies
+for cmd in ttyd tmux; do
+    if ! command -v "$cmd" &> /dev/null; then
+        echo "Error: '$cmd' is not installed." >&2
+        exit 1
+    fi
+done
+
+kill_existing() {
+    # Kill any existing ttyd processes running on our port
+    PID=$(lsof -t -i:"$PORT" 2>/dev/null)
+    if [ -not -z "$PID" ]; then
+        kill -9 $PID 2>/dev/null
+    fi
+    # Safely kill the old tmux session if it exists
+    tmux kill-session -t "$SESSION_NAME" 2>/dev/null
+}
+
+show_help() {
+    echo "Usage: bt [option]"
+    echo ""
+    echo "Options:"
+    echo "  -p, --present   Start presentation mode (Two-way: write in Chrome & terminal)"
+    echo "  -s, --share     Start screen-share mode (Read-only Chrome; type in terminal only)"
+    echo "  -k, --kill      Stop all running presentation backends"
+}
+
+start_backend() {
+    local write_flag=$1
+    kill_existing
+    
+    # 1. Start the headless tmux session
+    tmux new-session -d -s "$SESSION_NAME"
+    
+    # 2. Start ttyd in the background
+    if [ "$write_flag" = "true" ]; then
+        ttyd -W -p "$PORT" tmux attach-session -t "$SESSION_NAME" > /dev/null 2>&1 &
+    else
+        ttyd -p "$PORT" tmux attach-session -t "$SESSION_NAME" > /dev/null 2>&1 &
+    fi
+    
+    # Disown the background process so it persists when you close this terminal window
+    disown
+}
+
+case "$1" in
+    -p|--present)
+        start_backend "true"
+        echo "=========================================================="
+        echo "  🟢 PRESENTATION Mode Started (Interactive)"
+        echo "  URL: http://${DOMAIN}:${PORT}"
+        echo "=========================================================="
+        echo "  👉 Chrome: Can view AND type."
+        echo "  👉 You: Type in Chrome directly, or run 'tmux a' in any terminal"
+        echo "          to mirror/type from Ghostty."
+        echo "=========================================================="
+        ;;
+        
+    -s|--share)
+        start_backend "false"
+        echo "=========================================================="
+        echo "  🟢 SHARE Mode Started (Read-Only Chrome Client)"
+        echo "  URL: http://${DOMAIN}:${PORT}"
+        echo "=========================================================="
+        echo "  👉 Chrome: Read-only visual feed."
+        echo "  👉 You: Run 'tmux a' in any terminal to start typing!"
+        echo "=========================================================="
+        ;;
+        
+    -k|--kill)
+        kill_existing
+        echo "🔴 All presentation sessions and backends stopped."
+        ;;
+        
+    -h|--help|"")
+        show_help
+        ;;
+        
+    *)
+        echo "Invalid option: $1" >&2
+        show_help
+        exit 1
+        ;;
+esac
