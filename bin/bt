@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 
 # Configuration
-PORT="57731"
-SESSION_NAME="presentation"
+BASE_PORT="57731"
+DEFAULT_SESSION="presentation"
 DOMAIN="terminal.localhost"
+STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/bt-sessions"
 
 # Check dependencies
 for cmd in ttyd tmux; do
@@ -13,76 +14,151 @@ for cmd in ttyd tmux; do
     fi
 done
 
-kill_existing() {
-    # Kill any existing ttyd processes running on our port
-    PID=$(lsof -t -i:"$PORT" 2>/dev/null)
-    if [ -not -z "$PID" ]; then
-        kill -9 $PID 2>/dev/null
+mkdir -p "$STATE_DIR"
+
+# Populated by start_backend so the caller can print the URL
+SESSION_PORT=""
+
+# Find a free TCP port, starting from a deterministic offset for the given name.
+# The offset keeps a session on a stable port across restarts, and we bump
+# upwards if that port happens to be taken (by another session or anything else).
+find_free_port() {
+    local name="$1"
+    local hash port
+    hash=$(cksum <<< "$name" | cut -d' ' -f1)
+    port=$(( BASE_PORT + (hash % 1000) ))
+    while lsof -i:"$port" &> /dev/null; do
+        port=$(( port + 1 ))
+    done
+    echo "$port"
+}
+
+kill_session() {
+    local name="$1"
+    local state_file="$STATE_DIR/$name"
+
+    if [ -f "$state_file" ]; then
+        local port pid
+        port=$(cat "$state_file")
+        pid=$(lsof -t -i:"$port" 2>/dev/null)
+        [ -n "$pid" ] && kill -9 $pid 2>/dev/null
+        rm -f "$state_file"
     fi
-    # Safely kill the old tmux session if it exists
-    tmux kill-session -t "$SESSION_NAME" 2>/dev/null
+    tmux kill-session -t "bt-$name" 2>/dev/null
+}
+
+kill_all() {
+    local found=0 state_file
+    for state_file in "$STATE_DIR"/*; do
+        [ -e "$state_file" ] || continue
+        kill_session "$(basename "$state_file")"
+        found=1
+    done
+    if [ "$found" -eq 0 ]; then
+        echo "No running sessions."
+    else
+        echo "🔴 All presentation sessions and backends stopped."
+    fi
+}
+
+list_sessions() {
+    local found=0 state_file name port
+    for state_file in "$STATE_DIR"/*; do
+        [ -e "$state_file" ] || continue
+        name=$(basename "$state_file")
+        port=$(cat "$state_file")
+        if tmux has-session -t "bt-$name" 2>/dev/null; then
+            printf "  %-20s http://%s:%s\n" "$name" "$DOMAIN" "$port"
+            found=1
+        else
+            rm -f "$state_file" # stale entry
+        fi
+    done
+    [ "$found" -eq 0 ] && echo "  (none running)"
 }
 
 show_help() {
-    echo "Usage: bt [option]"
+    echo "Usage: bt [option] [name]"
+    echo ""
+    echo "Each session runs under its own tmux session and its own port,"
+    echo "so you can run several at once. 'name' defaults to '$DEFAULT_SESSION'."
     echo ""
     echo "Options:"
-    echo "  -p, --present   Start presentation mode (Two-way: write in Chrome & terminal)"
-    echo "  -s, --share     Start screen-share mode (Read-only Chrome; type in terminal only)"
-    echo "  -k, --kill      Stop all running presentation backends"
+    echo "  -p, --present [name]   Start presentation mode (Two-way: write in Chrome & terminal)"
+    echo "  -s, --share   [name]   Start screen-share mode (Read-only Chrome; type in terminal only)"
+    echo "  -k, --kill    [name]   Stop one session, or all sessions if no name is given"
+    echo "  -l, --list             List running sessions and their URLs"
 }
 
 start_backend() {
-    local write_flag=$1
-    kill_existing
-    
+    local name="$1"
+    local write_flag="$2"
+
+    # Clean any existing session with the same name, then claim a fresh port
+    kill_session "$name"
+    SESSION_PORT=$(find_free_port "$name")
+    echo "$SESSION_PORT" > "$STATE_DIR/$name"
+
     # 1. Start the headless tmux session
-    tmux new-session -d -s "$SESSION_NAME"
-    
+    tmux new-session -d -s "bt-$name"
+
     # 2. Start ttyd in the background
     if [ "$write_flag" = "true" ]; then
-        ttyd -W -p "$PORT" tmux attach-session -t "$SESSION_NAME" > /dev/null 2>&1 &
+        ttyd -W -p "$SESSION_PORT" tmux attach-session -t "bt-$name" > /dev/null 2>&1 &
     else
-        ttyd -p "$PORT" tmux attach-session -t "$SESSION_NAME" > /dev/null 2>&1 &
+        ttyd -p "$SESSION_PORT" tmux attach-session -t "bt-$name" > /dev/null 2>&1 &
     fi
-    
+
     # Disown the background process so it persists when you close this terminal window
     disown
 }
 
 case "$1" in
     -p|--present)
-        start_backend "true"
+        name="${2:-$DEFAULT_SESSION}"
+        start_backend "$name" "true"
         echo "=========================================================="
         echo "  🟢 PRESENTATION Mode Started (Interactive)"
-        echo "  URL: http://${DOMAIN}:${PORT}"
+        echo "  Session: ${name}"
+        echo "  URL: http://${DOMAIN}:${SESSION_PORT}"
         echo "=========================================================="
         echo "  👉 Chrome: Can view AND type."
-        echo "  👉 You: Type in Chrome directly, or run 'tmux a' in any terminal"
-        echo "          to mirror/type from Ghostty."
+        echo "  👉 You: Type in Chrome directly, or run 'tmux a -t bt-${name}'"
+        echo "          in any terminal to mirror/type from Ghostty."
         echo "=========================================================="
         ;;
-        
+
     -s|--share)
-        start_backend "false"
+        name="${2:-$DEFAULT_SESSION}"
+        start_backend "$name" "false"
         echo "=========================================================="
         echo "  🟢 SHARE Mode Started (Read-Only Chrome Client)"
-        echo "  URL: http://${DOMAIN}:${PORT}"
+        echo "  Session: ${name}"
+        echo "  URL: http://${DOMAIN}:${SESSION_PORT}"
         echo "=========================================================="
         echo "  👉 Chrome: Read-only visual feed."
-        echo "  👉 You: Run 'tmux a' in any terminal to start typing!"
+        echo "  👉 You: Run 'tmux a -t bt-${name}' in any terminal to start typing!"
         echo "=========================================================="
         ;;
-        
+
     -k|--kill)
-        kill_existing
-        echo "🔴 All presentation sessions and backends stopped."
+        if [ -n "$2" ]; then
+            kill_session "$2"
+            echo "🔴 Session '$2' stopped."
+        else
+            kill_all
+        fi
         ;;
-        
+
+    -l|--list)
+        echo "Running sessions:"
+        list_sessions
+        ;;
+
     -h|--help|"")
         show_help
         ;;
-        
+
     *)
         echo "Invalid option: $1" >&2
         show_help
