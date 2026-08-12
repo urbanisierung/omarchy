@@ -28,6 +28,6 @@ hl.window_rule({
 -- Apply default opacity after apps have had a chance to opt out
 
 hl.window_rule({
-    opacity = { 0.97, 0.9 },
+    opacity = "0.97 0.9",
     match = { tag = "default-opacity" },
 })

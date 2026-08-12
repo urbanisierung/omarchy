@@ -79,7 +79,7 @@ hl.animation({ leaf = "workspaces", enabled = false, speed = 0, bezier = "ease" 
 
 hl.config({
     animations = {
-        enabled = "yes, please :)",
+        enabled = true,
     },
 })
 
@@ -105,7 +105,6 @@ hl.config({
 
 hl.config({
     dwindle = {
-        pseudotile = true,
         preserve_split = true,
         force_split = 2,
     },

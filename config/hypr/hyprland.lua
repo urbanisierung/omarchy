@@ -6,19 +6,19 @@ dofile(os.getenv("HOME") .. "/.config/hypr/monitors.lua")  -- was: source = ~/.c
 
 -- Default applications
 
-local terminal = "ghostty"
+terminal = "ghostty"
 
-local fileManager = "nautilus --new-window"
+fileManager = "nautilus --new-window"
 
-local browser = "google-chrome --new-window --ozone-platform=wayland"
+browser = "google-chrome --new-window --ozone-platform=wayland"
 
-local music = "spotify"
+music = "spotify"
 
-local passwordManager = "1password"
+passwordManager = "1password"
 
-local messenger = "signal-desktop"
+messenger = "signal-desktop"
 
-local webapp = browser .. " --app"
+webapp = browser .. " --app"
 
 -- Use defaults Omarchy defaults
 
@@ -54,43 +54,43 @@ hl.env("GDK_SCALE", "2")
 
 -- bind = SUPER, E, exec, $webapp="https://app.hey.com"
 
-hl.bind("SUPER + Y", hl.dsp.exec(webapp .. "=\"https://youtube.com/\""))
+hl.bind("SUPER + Y", hl.dsp.exec_cmd(webapp .. "=\"https://youtube.com/\""))
 
-hl.bind("SUPER SHIFT + G", hl.dsp.exec(webapp .. "=\"https://web.whatsapp.com/\""))
+hl.bind("SUPER + SHIFT + G", hl.dsp.exec_cmd(webapp .. "=\"https://web.whatsapp.com/\""))
 
-hl.bind("SUPER ALT + G", hl.dsp.exec(webapp .. "=\"https://messages.google.com/web/conversations\""))
+hl.bind("SUPER + ALT + G", hl.dsp.exec_cmd(webapp .. "=\"https://messages.google.com/web/conversations\""))
 
 -- bind = SUPER, X, exec, $webapp="https://x.com/"
 
-hl.bind("SUPER SHIFT + X", hl.dsp.exec(webapp .. "=\"https://x.com/compose/post\""))
+hl.bind("SUPER + SHIFT + X", hl.dsp.exec_cmd(webapp .. "=\"https://x.com/compose/post\""))
 
-hl.bind("SUPER SHIFT + M", hl.dsp.exec("~/.local/share/omarchy/bin/omarchy-remind"))
+hl.bind("SUPER + SHIFT + M", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-remind"))
 
 -- Ack/dismiss the current notification (e.g. a fired reminder) from the keyboard
 
-hl.bind("SUPER + BackSpace", hl.dsp.exec("makoctl dismiss"))
+hl.bind("SUPER + BackSpace", hl.dsp.exec_cmd("makoctl dismiss"))
 
 -- Open the current notification's action (reminder Snooze/Ack chooser)
 
-hl.bind("SUPER SHIFT + BackSpace", hl.dsp.exec("makoctl invoke"))
+hl.bind("SUPER + SHIFT + BackSpace", hl.dsp.exec_cmd("makoctl invoke"))
 
 -- Resize window
 
-hl.bind("SUPER CTRL + R", hl.dsp.submap("resize"))
+hl.bind("SUPER + CTRL + R", hl.dsp.submap("resize"))
 
-hl.bind("right", hl.dsp.resizeactive("50 0"), { submap = "resize" })
+hl.bind("right", hl.dsp.window.resize({ x = 50, y = 0, relative = true }), { submap = "resize" })
 
-hl.bind("left", hl.dsp.resizeactive("-50 0"), { submap = "resize" })
+hl.bind("left", hl.dsp.window.resize({ x = -50, y = 0, relative = true }), { submap = "resize" })
 
-hl.bind("up", hl.dsp.resizeactive("0 -50"), { submap = "resize" })
+hl.bind("up", hl.dsp.window.resize({ x = 0, y = -50, relative = true }), { submap = "resize" })
 
-hl.bind("down", hl.dsp.resizeactive("0 50"), { submap = "resize" })
+hl.bind("down", hl.dsp.window.resize({ x = 0, y = 50, relative = true }), { submap = "resize" })
 
 hl.bind("Return", hl.dsp.submap("reset"), { submap = "resize" })
 
-hl.bind("SUPER + R", hl.dsp.exec("~/hyprwhspr/transcribe.sh"))
+hl.bind("SUPER + R", hl.dsp.exec_cmd("~/hyprwhspr/transcribe.sh"))
 
-hl.bind("SUPER + E", hl.dsp["hyprexpo:expo"]("toggle"))
+hl.bind("SUPER + E", function() hl.dispatch("hyprexpo:expo", "toggle") end)
 
 -- Control your input devices
 

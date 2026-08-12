@@ -95,6 +95,20 @@ def convert_scalar(key, raw, known_vars):
     return lua_string(raw)
 
 
+def loose_bool(raw):
+    """Coerce a value whose leading token is bool-ish to true/false.
+
+    Handles Hyprland's strictly-boolean keys (e.g. `enabled`) even when the
+    source has trailing junk, like omarchy's `enabled = yes, please :)`.
+    """
+    tok = re.split(r"[,\s]+", raw.strip(), maxsplit=1)[0].lower()
+    if tok in BOOL_TRUE:
+        return "true"
+    if tok in BOOL_FALSE:
+        return "false"
+    return None
+
+
 def convert_color_key(key, raw):
     """Handle `col.xxx = rgba(...) [rgba(...)] [Ndeg]` gradient border colors."""
     colors = COLOR_RE.findall(raw)
@@ -183,10 +197,9 @@ def convert_windowrule(raw):
     if not action_arg:
         action_val = "true"
     else:
-        nums = action_arg.split()
-        if all(NUMBER_RE.match(n) for n in nums) and len(nums) > 1:
-            action_val = "{ " + ", ".join(nums) + " }"
-        elif action_arg.lower() in rule_bool_true:
+        # Window-rule action values are strings in the Lua API (e.g.
+        # opacity = "0.97 0.9"), except on/off/true/false which are bools.
+        if action_arg.lower() in rule_bool_true:
             action_val = "true"
         elif action_arg.lower() in rule_bool_false:
             action_val = "false"
@@ -219,6 +232,77 @@ def convert_windowrule(raw):
         lines.append("    match = { " + ", ".join(match_entries) + " },")
     lines.append("})")
     return "\n".join(lines)
+
+
+# hyprland direction shorthands -> the full words the Lua focus/move API wants.
+DIRECTION = {
+    "l": "left", "r": "right", "u": "up", "d": "down",
+    "left": "left", "right": "right", "up": "up", "down": "down",
+}
+
+
+def _ws_value(arg):
+    arg = arg.strip()
+    return arg if NUMBER_RE.match(arg) else lua_string(arg)
+
+
+def convert_dispatcher(dispatcher, args, flags, known_vars, var_literal):
+    """Map a hyprlang dispatcher + args to the structured hl.dsp.* Lua call.
+
+    The Lua API is a curated semantic namespace (verified against Hyprland
+    --verify-config), NOT a 1:1 passthrough of hyprlang dispatcher names.
+    Returns a Lua expression string, or None if it can't be mapped.
+    """
+    a = args.strip()
+    mouse = flags.get("mouse")
+
+    if dispatcher == "exec":
+        return f"hl.dsp.exec_cmd({render_value_with_vars(a, known_vars)})"
+    if dispatcher == "exit":
+        return "hl.dsp.exit()"
+    if dispatcher == "killactive":
+        return "hl.dsp.window.close()"
+    if dispatcher == "pseudo":
+        return "hl.dsp.window.pseudo()"
+    if dispatcher == "fullscreen":
+        return "hl.dsp.window.fullscreen()"
+    if dispatcher == "togglefloating":
+        return 'hl.dsp.window.float({ action = "toggle" })'
+    if dispatcher == "movefocus":
+        d = DIRECTION.get(a.lower())
+        return f"hl.dsp.focus({{ direction = {lua_string(d)} }})" if d else None
+    if dispatcher == "movewindow":
+        if mouse:
+            return "hl.dsp.window.drag()"
+        d = DIRECTION.get(a.lower())
+        return f"hl.dsp.window.move({{ direction = {lua_string(d)} }})" if d else None
+    if dispatcher == "swapwindow":
+        d = DIRECTION.get(a.lower())
+        return f"hl.dsp.window.swap({{ direction = {lua_string(d)} }})" if d else None
+    if dispatcher == "resizeactive":
+        nums = a.split()
+        if len(nums) == 2 and all(re.match(r"^-?\d+$", n) for n in nums):
+            return f"hl.dsp.window.resize({{ x = {nums[0]}, y = {nums[1]}, relative = true }})"
+        return None
+    if dispatcher == "resizewindow":
+        return "hl.dsp.window.resize()"
+    if dispatcher == "workspace":
+        return f"hl.dsp.focus({{ workspace = {_ws_value(a)} }})"
+    if dispatcher == "movetoworkspace":
+        return f"hl.dsp.window.move({{ workspace = {_ws_value(a)} }})"
+    if dispatcher == "layoutmsg":
+        return f"hl.dsp.layout({lua_string(a)})"
+    if dispatcher == "submap":
+        name = var_literal[a[1:]] if a.startswith("$") and a[1:] in var_literal else a
+        return f"hl.dsp.submap({lua_string(name)})"
+    # plugin dispatcher (e.g. hyprexpo:expo): not exposed on hl.dsp, so route
+    # it through hl.dispatch by name, wrapped in a Lua function (hl.bind
+    # accepts a plain function). Safe even if the plugin isn't loaded at parse.
+    if ":" in dispatcher:
+        if a:
+            return f"function() hl.dispatch({lua_string(dispatcher)}, {lua_string(a)}) end"
+        return f"function() hl.dispatch({lua_string(dispatcher)}) end"
+    return None
 
 
 def transpile(text, known_vars=None, var_literal=None):
@@ -298,7 +382,10 @@ def transpile(text, known_vars=None, var_literal=None):
             known_vars[name] = ident
             var_literal[name] = value
             lua_val = render_value_with_vars(value, known_vars)
-            out.append(f"local {ident} = {lua_val}")
+            # Global (not local): hyprlang $vars are visible to `source`d
+            # files, which we emit as dofile() chunks that can't see the
+            # parent's Lua locals. Globals restore that cross-file visibility.
+            out.append(f"{ident} = {lua_val}")
             continue
 
         if key == "source":
@@ -358,14 +445,14 @@ def transpile(text, known_vars=None, var_literal=None):
             fields = value.split(",", 3)
             fields += [""] * (4 - len(fields))
             mods, keyname, dispatcher, args = (f.strip() for f in fields)
-            mods_key = f"{mods} + {keyname}" if mods else keyname
-            args_lua = render_value_with_vars(args, known_vars) if args else None
+            # Every token must be '+'-joined: "SUPER + SHIFT + M", not
+            # "SUPER SHIFT + M" (Hyprland's Lua key parser rejects the latter).
+            mods_key = " + ".join([*mods.split(), keyname]) if keyname else " + ".join(mods.split())
             if dispatcher:
-                # Plugin dispatchers use a "plugin:dispatcher" name (e.g.
-                # hyprexpo:expo). Dotted access would parse `:` as Lua
-                # method-call sugar, so index with a string key instead.
-                dsp_ref = f"hl.dsp.{dispatcher}" if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", dispatcher) else f'hl.dsp[{lua_string(dispatcher)}]'
-                call = f"{dsp_ref}({args_lua})" if args_lua else f"{dsp_ref}()"
+                call = convert_dispatcher(dispatcher, args, flags, known_vars, var_literal)
+                if call is None:
+                    out.append(f"-- TODO(manual-migration): {stripped}")
+                    continue
             else:
                 call = "nil"
             if current_submap is not None:
@@ -399,6 +486,10 @@ def transpile(text, known_vars=None, var_literal=None):
             continue
 
         lua_val = convert_scalar(key, value, known_vars)
+        # `enabled` is strictly boolean everywhere in Hyprland; coerce even
+        # when the source value has trailing junk.
+        if key == "enabled":
+            lua_val = loose_bool(value) or lua_val
         entry = ("kv", key, lua_val)
         if stack:
             stack[-1].entries.append(entry)
