@@ -333,6 +333,12 @@ def transpile(text, known_vars=None, var_literal=None):
             ctx = stack.pop()
             if stack:
                 stack[-1].entries.append(("sub", ctx.name, ctx.entries))
+            elif ctx.name in ("monitor", "monitorv2"):
+                # A monitor block maps to hl.monitor({...}), not a config block.
+                lines = ["hl.monitor({"]
+                lines.extend(render_entries(ctx.entries, 1))
+                lines.append("})")
+                out.append("\n".join(lines))
             else:
                 out.append(render_block(ctx.name, ctx.entries))
             continue
