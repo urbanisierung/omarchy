@@ -3,49 +3,41 @@
 # A script to display Hyprland keybindings defined in your configuration
 # using wofi for an interactive search menu.
 
-USER_HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
-OMARCHY_BINDINGS_CONF="$HOME/.local/share/omarchy/default/hypr/bindings.conf"
+USER_HYPRLAND_CONF="$HOME/.config/hypr/hyprland.lua"
+OMARCHY_BINDINGS_CONF="$HOME/.local/share/omarchy/default/hypr/bindings.lua"
 
 # Process the configuration file to extract and format keybindings
-# 1. `grep` finds all lines starting with 'bind' (allowing for leading spaces).
-# 2. The first `sed` removes comments (anything after a '#').
-# 3. `awk` does the heavy lifting of formatting the output.
-#    - It sets the field separator to a comma ','.
-#    - It removes the 'bind... =' part from the beginning of the line.
-#    - It joins the key combination (e.g., "SUPER + Q").
-#    - It joins the command that the key executes.
-#    - It prints everything in a nicely aligned format.
-# 4. The final `sed` cleans up any leftover commas from the end of lines.
-grep -h '^[[:space:]]*bind' "$HYPRLAND_CONF" "$OMARCHY_BINDINGS_CONF" |
-  awk -F, '
+# 1. `grep` finds all lines with an `hl.bind(...)` call.
+# 2. `awk` does the heavy lifting of formatting the output:
+#    - Drops a trailing `, { ... }` options table (e.g. submap/mouse flags).
+#    - Pulls out the quoted key combo (first argument).
+#    - Pulls out the dispatcher call (second argument) as the action text.
+awk '
 {
-    # Strip trailing comments
-    sub(/#.*/, "");
+    line = $0
+    sub(/, \{[^}]*\}\)$/, ")", line)
 
-    # Remove the "bind... =" part and surrounding whitespace
-    sub(/^[[:space:]]*bind[^=]*=(\+[[:space:]])?(exec, )?[[:space:]]*/, "", $1);
+    prefix = "hl.bind(\""
+    p = index(line, prefix)
+    if (p == 0) next
+    rest = substr(line, p + length(prefix))
 
-    # Combine the modifier and key (first two fields)
-    key_combo = $1 " + " $2;
+    q = index(rest, "\"")
+    if (q == 0) next
+    key_combo = substr(rest, 1, q - 1)
+    gsub(/[ \t]+/, " ", key_combo)
 
-    # Clean up: strip leading "+" if present, trim spaces
-    gsub(/^[ \t]*\+?[ \t]*/, "", key_combo);
-    gsub(/[ \t]+$/, "", key_combo);
-
-    # Reconstruct the command from the remaining fields
-    action = "";
-    for (i = 3; i <= NF; i++) {
-        action = action $i (i < NF ? "," : "");
+    rest2 = substr(rest, q + 1)
+    c = index(rest2, ",")
+    if (c == 0) next
+    action = substr(rest2, c + 1)
+    gsub(/^[ \t]+/, "", action)
+    if (substr(action, length(action), 1) == ")") {
+        action = substr(action, 1, length(action) - 1)
     }
 
-    # Clean up trailing commas, remove leading "exec, ", and trim
-    sub(/,$/, "", action);
-    gsub(/(^|,)[[:space:]]*exec[[:space:]]*,?/, "", action);
-    gsub(/^[ \t]+|[ \t]+$/, "", action);
-    gsub(/[ \t]+/, " ", key_combo);  # Collapse multiple spaces to one
-
-    if (action != "") {
-        printf "%-35s → %s\n", key_combo, action;
+    if (action != "" && action != "nil") {
+        printf "%-35s → %s\n", key_combo, action
     }
-}' |
+}' "$USER_HYPRLAND_CONF" "$OMARCHY_BINDINGS_CONF" |
   flock --nonblock /tmp/.wofi.lock -c "wofi -dmenu -i --width 60% --height 70% -p 'Hyprland Keybindings' -O alphabetical"
