@@ -96,7 +96,7 @@ hl.bind("Escape", hl.dsp.submap("reset"), { submap = "shift (s)hutdown | (e)xit 
 
 -- Control tiling
 
-hl.bind("SUPER + J", hl.dsp.togglesplit())
+hl.bind("SUPER + J", hl.dsp.layoutmsg("togglesplit"))
 
 hl.bind("SUPER + P", hl.dsp.pseudo())
 
