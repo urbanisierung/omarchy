@@ -1,0 +1,25 @@
+-- See https://wiki.hyprland.org/Configuring/Monitors/
+
+-- Use single default monitor (see all monitors with: hyprctl monitors)
+
+-- monitor=,preferred,auto-left,1
+
+hl.monitor({
+    output = "DP-3",
+    mode = "preferred",
+    position = "0x0",
+    scale = 1,
+})
+
+hl.monitor({
+    output = "eDP-1",
+    mode = "preferred",
+    position = "auto-right",
+    scale = 1,
+})
+
+-- Example for Framework 13 w/ 6K XDR Apple display
+
+-- monitor = DP-5, 6016x3384@60.00, auto, 2
+
+-- monitor = eDP-1, 2880x1920@120.00, auto, 2

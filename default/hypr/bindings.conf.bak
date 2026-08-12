@@ -6,7 +6,6 @@ bind = SUPER, C, exec, $browser --profile-directory=Default
 bind = SUPER, N, exec, $terminal -e nvim
 bind = SUPER, Z, exec, $terminal -e btop
 # bind = SUPER SHIFT, T, exec, $browser --profile-directory=Default --app="https://www.deepl.com/en/translator" --name="DeepL" --class="DeepL"
-bind = SUPER SHIFT, U, exec, ~/.local/share/omarchy/bin/omarchy-claude-usage
 
 # Offline Translation (Super + T)
 bind = SUPER, T, exec, python3 ~/.local/bin/translate_manager.py offline
@@ -30,6 +29,7 @@ bind = SUPER CTRL, SPACE, exec, ~/.local/share/omarchy/bin/swaybg-next
 bind = SUPER SHIFT CTRL, SPACE, exec, ~/.local/share/omarchy/bin/omarchy-theme-next
 bind = SUPER, K, exec, ~/.local/share/omarchy/bin/omarchy-show-keybindings
 bind = SUPER SHIFT, K, exec, ~/.local/share/omarchy/bin/omarchy-show-commands
+bind = SUPER SHIFT, U, exec, ~/.local/share/omarchy/bin/omarchy-claude-usage
 bind = SUPER, U, exec, ~/.local/share/omarchy/bin/omarchy-show-repos
 
 bind = SHIFT CTRL, M, exec, copyq toggle
@@ -58,7 +58,7 @@ bind = , Escape, submap, reset
 submap=reset
 
 # Control tiling
-# bind = SUPER, J, togglesplit, # dwindle
+bind = SUPER, J, togglesplit, # dwindle
 bind = SUPER, P, pseudo, # dwindle
 #bind = SUPER, V, togglefloating,
 bind = SUPER, V, layoutmsg, preselect b
@@ -81,6 +81,17 @@ bind = SUPER, code:16, workspace, 7
 bind = SUPER, code:17, workspace, 8
 bind = SUPER, code:18, workspace, 9
 bind = SUPER, code:19, workspace, 10
+
+bind = SUPER ALT, code:10, workspace, 11
+bind = SUPER ALT, code:11, workspace, 12
+bind = SUPER ALT, code:12, workspace, 13
+bind = SUPER ALT, code:13, workspace, 14
+bind = SUPER ALT, code:14, workspace, 15
+bind = SUPER ALT, code:15, workspace, 16
+bind = SUPER ALT, code:16, workspace, 17
+bind = SUPER ALT, code:17, workspace, 18
+bind = SUPER ALT, code:18, workspace, 19
+bind = SUPER ALT, code:19, workspace, 10
 
 # Move active window to a workspace with mainMod + SHIFT + [0-9]
 bind = SUPER SHIFT, code:10, movetoworkspace, 1
@@ -105,17 +116,6 @@ bind = SUPER SHIFT ALT, code:16, movetoworkspace, 17
 bind = SUPER SHIFT ALT, code:17, movetoworkspace, 18
 bind = SUPER SHIFT ALT, code:18, movetoworkspace, 19
 bind = SUPER SHIFT ALT, code:19, movetoworkspace, 20
-
-bind = SUPER ALT, code:10, workspace, 11
-bind = SUPER ALT, code:11, workspace, 12
-bind = SUPER ALT, code:12, workspace, 13
-bind = SUPER ALT, code:13, workspace, 14
-bind = SUPER ALT, code:14, workspace, 15
-bind = SUPER ALT, code:15, workspace, 16
-bind = SUPER ALT, code:16, workspace, 17
-bind = SUPER ALT, code:17, workspace, 18
-bind = SUPER ALT, code:18, workspace, 19
-bind = SUPER ALT, code:19, workspace, 10
 
 # Swap active window with the one next to it with mainMod + SHIFT + arrow keys
 bind = SUPER SHIFT, left, swapwindow, l

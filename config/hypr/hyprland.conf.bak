@@ -23,6 +23,7 @@ source = ~/.config/omarchy/current/theme/hyprland.conf
 
 # Extra autostart processes (uncomment to run Dropbox)
 # exec-once = dropbox-cli start
+exec-once = hyprpm reload -n
 
 # Extra env variables
 env = GDK_SCALE,2 # Change to 1 if on a 1x display
@@ -37,9 +38,14 @@ bind = SUPER SHIFT, G, exec, $webapp="https://web.whatsapp.com/"
 bind = SUPER ALT, G, exec, $webapp="https://messages.google.com/web/conversations"
 # bind = SUPER, X, exec, $webapp="https://x.com/"
 bind = SUPER SHIFT, X, exec, $webapp="https://x.com/compose/post"
+bind = SUPER SHIFT, M, exec, ~/.local/share/omarchy/bin/omarchy-remind
+# Ack/dismiss the current notification (e.g. a fired reminder) from the keyboard
+bind = SUPER, BackSpace, exec, makoctl dismiss
+# Open the current notification's action (reminder Snooze/Ack chooser)
+bind = SUPER SHIFT, BackSpace, exec, makoctl invoke
 
 # Resize window
-bind = SUPER, R, submap, resize
+bind = SUPER CTRL, R, submap, resize
 submap=resize
 bind = , right, resizeactive, 50 0
 bind = , left, resizeactive, -50 0
@@ -47,6 +53,9 @@ bind = , up, resizeactive, 0 -50
 bind = , down, resizeactive, 0 50
 bind = , Return,submap,reset
 submap=reset
+
+bind = SUPER, R, exec, ~/hyprwhspr/transcribe.sh
+bind = SUPER, E, hyprexpo:expo, toggle
 
 # Control your input devices
 # See https://wiki.hypr.land/Configuring/Variables/#input
@@ -75,4 +84,18 @@ input {
 }
 
 # Scroll faster in the terminal
-windowrule = scrolltouchpad 1.5, class:Alacritty
+# windowrule = scrolltouchpad 1.5, class:Alacritty
+
+plugin {
+    hyprexpo {
+        columns = 5
+        gap_size = 5
+        bg_col = rgb(111111)
+        workspace_method = center current # or "first 1" to always start at workspace 1
+
+        enable_gesture = true
+        # gesture_fingers = 3
+        gesture_distance = 300
+        # gesture_positive = true
+    }
+}
