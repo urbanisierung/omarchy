@@ -1,0 +1,112 @@
+#!/bin/bash
+
+# A script to display your most-used GitHub repos using wofi.
+#
+# Data source: ~/.config/eee/counts
+#   Each line is "<owner>/<repo>  <count>", e.g.
+#       urbanisierung/e-invoice 11
+#   Repos are listed most-opened first, then alphabetically.
+#
+# Interaction:
+#   Enter        -> open the repo on github.com in the default browser
+#   Arrow Right  -> open a submenu with repo sub views (issues, PRs, ...)
+#   In submenu:
+#     Enter      -> open the selected sub view in the browser
+#     Arrow Left -> go back to the repo list
+
+CONFIG_FILE="${EEE_COUNTS_FILE:-$HOME/.config/eee/counts}"
+GITHUB_BASE="https://github.com"
+
+# Sub views offered per repo: "Label<TAB>path"
+SUBVIEWS=$(
+  cat <<'EOF'
+Code (Overview)	
+Issues	/issues
+Pull Requests	/pulls
+Actions	/actions
+Releases	/releases
+Discussions	/discussions
+Commits	/commits/HEAD
+Branches	/branches
+Tags	/tags
+Wiki	/wiki
+Projects	/projects
+Insights	/pulse
+Settings	/settings
+EOF
+)
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  notify-send "omarchy-show-repos" "Config file not found: $CONFIG_FILE" 2>/dev/null
+  echo "Config file not found: $CONFIG_FILE" >&2
+  exit 1
+fi
+
+# Guard against overlapping instances (e.g. double keybind press). We hold the
+# lock for the whole script so the main menu and the sub view menu don't race
+# each other for it when the menus hand over on Right/Left.
+exec 9>/tmp/.omarchy-show-repos.lock
+flock --nonblock 9 || exit 0
+
+# wofi wrapper.
+#   $1: prompt
+#   $2: key bound to custom action 0 (exits with code 10), e.g. "Right"
+#
+# Note: wofi binds the Left/Right arrows to the search cursor by default
+# (key_left / key_right); we unbind both so our custom binding on Left/Right
+# reacts on the first press instead of moving the (empty) search cursor.
+wofi_menu() {
+  local prompt="$1" custom_key="$2"
+  wofi -dmenu -i --width 60% --height 70% -p "$prompt" \
+    --define=key_left= --define=key_right= --define=key_custom_0="$custom_key"
+}
+
+# Build the repo list, most-opened first then alphabetically.
+# Emits "<owner>/<repo>\t<count>".
+build_repo_list() {
+  awk 'NF >= 2 { printf "%s\t%s\n", $1, $NF }' "$CONFIG_FILE" |
+    sort -t$'\t' -k2,2nr -k1,1
+}
+
+show_main_menu() {
+  build_repo_list |
+    awk -F'\t' '{ printf "%-45s (%s)\n", $1, $2 }' |
+    wofi_menu "GitHub Repos  (→ sub views)" "Right"
+}
+
+# Submenu for a single repo. Opens the chosen sub view, or returns 1 to go back.
+show_submenu() {
+  local repo="$1" choice ret path
+  choice=$(printf '%s\n' "$SUBVIEWS" |
+    awk -F'\t' '{ print $1 }' |
+    wofi_menu "$repo  (← back)" "Left")
+  ret=$?
+
+  # Arrow Left -> back to the repo list.
+  [[ $ret -eq 10 ]] && return 1
+  # Escape / empty selection -> quit.
+  [[ -z "$choice" ]] && exit 0
+
+  path=$(awk -F'\t' -v c="$choice" '$1 == c { print $2; exit }' <<<"$SUBVIEWS")
+  setsid xdg-open "$GITHUB_BASE/$repo$path" >/dev/null 2>&1
+  exit 0
+}
+
+while true; do
+  selection=$(show_main_menu)
+  ret=$?
+
+  # Escape / empty selection -> quit.
+  [[ -z "$selection" ]] && exit 0
+
+  repo=$(awk '{ print $1 }' <<<"$selection")
+
+  if [[ $ret -eq 10 ]]; then
+    # Arrow Right -> open sub views; loop back to the list if user goes back.
+    show_submenu "$repo" || continue
+  else
+    # Enter -> open the repo overview.
+    setsid xdg-open "$GITHUB_BASE/$repo" >/dev/null 2>&1
+    exit 0
+  fi
+done
