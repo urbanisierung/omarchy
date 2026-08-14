@@ -112,18 +112,19 @@ hl.config({
 
 -- windowrule = scrolltouchpad 1.5, class:Alacritty
 
-hl.config({
-    plugin = {
-        hyprexpo = {
-            columns = 5,
-            gap_size = 5,
-            bg_col = "rgb(111111)",
-            workspace_method = "center current",
-            enable_gesture = true,
-            gesture_distance = 300,
-        },
-    },
-})
+-- TODO(manual-migration): plugin config requires the plugin to be loaded first (hl.plugin.load); uncomment once loaded:
+-- hl.config({
+--     plugin = {
+--         hyprexpo = {
+--             columns = 5,
+--             gap_size = 5,
+--             bg_col = "rgb(111111)",
+--             workspace_method = "center current",
+--             enable_gesture = true,
+--             gesture_distance = 300,
+--         },
+--     },
+-- })
 
 hl.on("hyprland.start", function()
     hl.exec_cmd("hyprpm reload -n")

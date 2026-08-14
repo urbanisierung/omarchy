@@ -339,6 +339,19 @@ def transpile(text, known_vars=None, var_literal=None):
                 lines.extend(render_entries(ctx.entries, 1))
                 lines.append("})")
                 out.append("\n".join(lines))
+            elif ctx.name == "plugin":
+                # Unlike classic hyprlang (which defers unknown plugin keys),
+                # the Lua hl.config validates immediately and logs "unknown
+                # config key" for any plugin that isn't already loaded - which
+                # spams the startup error overlay. Emit commented so it stays
+                # inert; load the plugin via hl.plugin.load(...) then uncomment.
+                block = render_block(ctx.name, ctx.entries)
+                commented = "\n".join("-- " + ln for ln in block.split("\n"))
+                out.append(
+                    "-- TODO(manual-migration): plugin config requires the plugin"
+                    " to be loaded first (hl.plugin.load); uncomment once loaded:\n"
+                    + commented
+                )
             else:
                 out.append(render_block(ctx.name, ctx.entries))
             continue
