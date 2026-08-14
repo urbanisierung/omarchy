@@ -84,15 +84,13 @@ poweroff_submap = "shift (s)hutdown | (e)xit | (r)eboot | (l) suspend"
 
 hl.bind("SUPER + O", hl.dsp.submap("shift (s)hutdown | (e)xit | (r)eboot | (l) suspend"))
 
-hl.bind("SHIFT + S", hl.dsp.exec_cmd("systemctl poweroff"), { submap = "shift (s)hutdown | (e)xit | (r)eboot | (l) suspend" })
-
-hl.bind("SHIFT + E", hl.dsp.exit(), { submap = "shift (s)hutdown | (e)xit | (r)eboot | (l) suspend" })
-
-hl.bind("SHIFT + R", hl.dsp.exec_cmd("reboot"), { submap = "shift (s)hutdown | (e)xit | (r)eboot | (l) suspend" })
-
-hl.bind("SHIFT + L", hl.dsp.exec_cmd("systemctl suspend"), { submap = "shift (s)hutdown | (e)xit | (r)eboot | (l) suspend" })
-
-hl.bind("Escape", hl.dsp.submap("reset"), { submap = "shift (s)hutdown | (e)xit | (r)eboot | (l) suspend" })
+hl.define_submap("shift (s)hutdown | (e)xit | (r)eboot | (l) suspend", function()
+    hl.bind("SHIFT + S", hl.dsp.exec_cmd("systemctl poweroff"))
+    hl.bind("SHIFT + E", hl.dsp.exit())
+    hl.bind("SHIFT + R", hl.dsp.exec_cmd("reboot"))
+    hl.bind("SHIFT + L", hl.dsp.exec_cmd("systemctl suspend"))
+    hl.bind("Escape", hl.dsp.submap("reset"))
+end)
 
 -- Control tiling
 

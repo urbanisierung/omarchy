@@ -179,6 +179,14 @@ def render_block(name, entries):
     return "\n".join(lines)
 
 
+def render_submap(name, bind_lines):
+    # Submap binds must be defined inside hl.define_submap(name, function() ...
+    # end); the classic per-bind `submap` option does not exist in the Lua API
+    # (a bare hl.bind registers globally, leaking the bind system-wide).
+    body = "\n".join("    " + ln for ln in bind_lines)
+    return f"hl.define_submap({lua_string(name)}, function()\n{body}\nend)"
+
+
 def convert_windowrule(raw):
     # Unlike generic config keys, windowrule match: fields (xwayland, float,
     # fullscreen, pin, ...) are always strictly boolean in Hyprland, so bare
@@ -314,6 +322,7 @@ def transpile(text, known_vars=None, var_literal=None):
     var_literal = dict(var_literal) if var_literal else {}
     exec_once = []
     current_submap = None
+    submap_binds = []
     sources = []
 
     block_open_re = re.compile(r"^([A-Za-z0-9_.]+)\s*\{\s*$")
@@ -447,6 +456,10 @@ def transpile(text, known_vars=None, var_literal=None):
 
         if key == "submap":
             name = value.strip()
+            # Flush any open submap into hl.define_submap() before switching.
+            if current_submap is not None:
+                out.append(render_submap(current_submap, submap_binds))
+                submap_binds = []
             if name == "reset":
                 current_submap = None
             elif name.startswith("$") and name[1:] in var_literal:
@@ -474,16 +487,20 @@ def transpile(text, known_vars=None, var_literal=None):
                     continue
             else:
                 call = "nil"
-            if current_submap is not None:
-                flags["submap"] = current_submap
             if flags:
                 opt_entries = ", ".join(
                     f"{k} = {v if v is True else lua_string(v)}" if v is not True else f"{k} = true"
                     for k, v in flags.items()
                 )
-                out.append(f'hl.bind({lua_string(mods_key)}, {call}, {{ {opt_entries} }})')
+                line = f'hl.bind({lua_string(mods_key)}, {call}, {{ {opt_entries} }})'
             else:
-                out.append(f'hl.bind({lua_string(mods_key)}, {call})')
+                line = f'hl.bind({lua_string(mods_key)}, {call})'
+            # Binds inside a submap are buffered and later wrapped in
+            # hl.define_submap(); only global binds go straight to output.
+            if current_submap is not None:
+                submap_binds.append(line)
+            else:
+                out.append(line)
             continue
 
         # generic key = value inside/outside a block
@@ -520,6 +537,10 @@ def transpile(text, known_vars=None, var_literal=None):
         lines += [f"    hl.exec_cmd({cmd})" for cmd in exec_once]
         lines.append("end)")
         out.append("\n".join(lines))
+
+    # Flush a submap left open at EOF (config normally closes with submap=reset).
+    if current_submap is not None:
+        out.append(render_submap(current_submap, submap_binds))
 
     return "\n\n".join(out) + "\n", sources, known_vars, var_literal
 

@@ -78,15 +78,13 @@ hl.bind("SUPER + SHIFT + BackSpace", hl.dsp.exec_cmd("makoctl invoke"))
 
 hl.bind("SUPER + CTRL + R", hl.dsp.submap("resize"))
 
-hl.bind("right", hl.dsp.window.resize({ x = 50, y = 0, relative = true }), { submap = "resize" })
-
-hl.bind("left", hl.dsp.window.resize({ x = -50, y = 0, relative = true }), { submap = "resize" })
-
-hl.bind("up", hl.dsp.window.resize({ x = 0, y = -50, relative = true }), { submap = "resize" })
-
-hl.bind("down", hl.dsp.window.resize({ x = 0, y = 50, relative = true }), { submap = "resize" })
-
-hl.bind("Return", hl.dsp.submap("reset"), { submap = "resize" })
+hl.define_submap("resize", function()
+    hl.bind("right", hl.dsp.window.resize({ x = 50, y = 0, relative = true }))
+    hl.bind("left", hl.dsp.window.resize({ x = -50, y = 0, relative = true }))
+    hl.bind("up", hl.dsp.window.resize({ x = 0, y = -50, relative = true }))
+    hl.bind("down", hl.dsp.window.resize({ x = 0, y = 50, relative = true }))
+    hl.bind("Return", hl.dsp.submap("reset"))
+end)
 
 hl.bind("SUPER + R", hl.dsp.exec_cmd("~/hyprwhspr/transcribe.sh"))
 
