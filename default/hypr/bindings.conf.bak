@@ -40,8 +40,8 @@ bind = SUPER, F, fullscreen
 bind = SUPER SHIFT, R, layoutmsg, movetoroot
 
 # End active session
-bind = SUPER, ESCAPE, exec, hyprlock
-bind = SUPER CTRL, L, exec, hyprlock
+bind = SUPER, ESCAPE, exec, loginctl lock-session
+bind = SUPER CTRL, L, exec, loginctl lock-session
 bind = SUPER SHIFT, ESCAPE, exec, systemctl suspend
 bind = SUPER ALT, ESCAPE, exit,
 bind = SUPER CTRL, ESCAPE, exec, reboot

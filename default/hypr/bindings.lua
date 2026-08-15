@@ -68,9 +68,9 @@ hl.bind("SUPER + SHIFT + R", hl.dsp.layout("movetoroot"))
 
 -- End active session
 
-hl.bind("SUPER + ESCAPE", hl.dsp.exec_cmd("hyprlock"))
+hl.bind("SUPER + ESCAPE", hl.dsp.exec_cmd("loginctl lock-session"))
 
-hl.bind("SUPER + CTRL + L", hl.dsp.exec_cmd("hyprlock"))
+hl.bind("SUPER + CTRL + L", hl.dsp.exec_cmd("loginctl lock-session"))
 
 hl.bind("SUPER + SHIFT + ESCAPE", hl.dsp.exec_cmd("systemctl suspend"))
 
