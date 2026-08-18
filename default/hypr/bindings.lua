@@ -46,6 +46,8 @@ hl.bind("SUPER + SHIFT + SPACE", hl.dsp.exec_cmd("pkill -SIGUSR1 waybar"))
 
 hl.bind("SUPER + CTRL + SPACE", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/swaybg-next"))
 
+hl.bind("SUPER + ALT + P", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-powerprofile toggle"))
+
 hl.bind("SUPER + SHIFT + CTRL + SPACE", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-theme-next"))
 
 hl.bind("SUPER + K", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-show-keybindings"))

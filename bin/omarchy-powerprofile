@@ -1,0 +1,127 @@
+#!/bin/bash
+
+# Manage the system power profile through the PowerProfiles D-Bus API
+# (backed by tuned-ppd on this system, so `powerprofilesctl` is not required).
+#
+# Subcommands:
+#   get               print the active profile
+#   list              print the selectable profiles
+#   set <profile>     switch to <profile>
+#   toggle            cycle power-saver -> balanced -> performance -> ...
+#   lock              save the current profile and drop to power-saver
+#   unlock            restore the profile saved by `lock`
+#   boot              choose a profile from AC/battery state at login
+
+set -uo pipefail
+
+DBUS_DEST="net.hadess.PowerProfiles"
+DBUS_PATH="/net/hadess/PowerProfiles"
+DBUS_IFACE="net.hadess.PowerProfiles"
+
+# Ordered so `toggle` walks least -> most performance.
+PROFILES=(power-saver balanced performance)
+STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-powerprofile.prelock"
+
+get_profile() {
+  busctl --system get-property "$DBUS_DEST" "$DBUS_PATH" "$DBUS_IFACE" ActiveProfile |
+    awk '{gsub(/"/, "", $2); print $2}'
+}
+
+set_profile() {
+  busctl --system set-property "$DBUS_DEST" "$DBUS_PATH" "$DBUS_IFACE" ActiveProfile s "$1"
+}
+
+pretty() {
+  case "$1" in
+  power-saver) echo "Power Saver 󰡳" ;;
+  balanced) echo "Balanced 󰊚" ;;
+  performance) echo "Performance 󰡴" ;;
+  *) echo "$1" ;;
+  esac
+}
+
+notify() {
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send -a "Power Profile" -i battery "Power Profile" "$1"
+  fi
+}
+
+cmd_toggle() {
+  local current next="" i
+  current="$(get_profile)"
+  for i in "${!PROFILES[@]}"; do
+    if [[ "${PROFILES[$i]}" == "$current" ]]; then
+      next="${PROFILES[$(((i + 1) % ${#PROFILES[@]}))]}"
+      break
+    fi
+  done
+  [[ -n "$next" ]] || next="balanced"
+  set_profile "$next"
+  notify "$(pretty "$next")"
+}
+
+cmd_set() {
+  local profile="${1:-}"
+  if [[ -z "$profile" ]]; then
+    echo "usage: ${0##*/} set <profile>" >&2
+    exit 1
+  fi
+  set_profile "$profile"
+  notify "$(pretty "$profile")"
+}
+
+cmd_lock() {
+  local current
+  current="$(get_profile)"
+  # Already saving power: don't stash a value and don't switch (no-op).
+  if [[ "$current" == "power-saver" ]]; then
+    exit 0
+  fi
+  echo "$current" >"$STATE_FILE"
+  set_profile power-saver
+}
+
+cmd_unlock() {
+  # No stash means we were already on power-saver when locked.
+  if [[ ! -f "$STATE_FILE" ]]; then
+    exit 0
+  fi
+  local saved
+  saved="$(cat "$STATE_FILE")"
+  rm -f "$STATE_FILE"
+  if [[ -n "$saved" ]]; then
+    set_profile "$saved"
+  fi
+}
+
+cmd_boot() {
+  local online=0 f
+  for f in /sys/class/power_supply/A{C,DP}*/online; do
+    if [[ -r "$f" ]]; then
+      online="$(cat "$f")"
+      break
+    fi
+  done
+  if [[ "$online" == "1" ]]; then
+    set_profile balanced
+  else
+    set_profile power-saver
+  fi
+}
+
+case "${1:-}" in
+get) get_profile ;;
+list) printf '%s\n' "${PROFILES[@]}" ;;
+set)
+  shift
+  cmd_set "${1:-}"
+  ;;
+toggle) cmd_toggle ;;
+lock) cmd_lock ;;
+unlock) cmd_unlock ;;
+boot) cmd_boot ;;
+*)
+  echo "usage: ${0##*/} {get|list|set <profile>|toggle|lock|unlock|boot}" >&2
+  exit 1
+  ;;
+esac
