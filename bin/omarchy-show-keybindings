@@ -13,6 +13,19 @@ OMARCHY_BINDINGS_CONF="$HOME/.local/share/omarchy/default/hypr/bindings.lua"
 #    - Pulls out the quoted key combo (first argument).
 #    - Pulls out the dispatcher call (second argument) as the action text.
 awk '
+# Turn a raw dispatcher call (e.g. hl.dsp.exec_cmd("cmd")) into readable text.
+function clean(a,    inner) {
+    sub(/^hl\.dsp\./, "", a)
+    if (a ~ /^exec_cmd\(/) {
+        inner = substr(a, length("exec_cmd(") + 1)
+        inner = substr(inner, 1, length(inner) - 1)
+        if (inner ~ /^".*"$/) {
+            inner = substr(inner, 2, length(inner) - 2)
+        }
+        a = inner
+    }
+    return a
+}
 {
     line = $0
     sub(/, \{[^}]*\}\)$/, ")", line)
@@ -35,6 +48,8 @@ awk '
     if (substr(action, length(action), 1) == ")") {
         action = substr(action, 1, length(action) - 1)
     }
+
+    action = clean(action)
 
     if (action != "" && action != "nil") {
         printf "%-35s → %s\n", key_combo, action
