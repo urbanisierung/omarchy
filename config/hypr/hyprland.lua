@@ -88,7 +88,16 @@ end)
 
 hl.bind("SUPER + R", hl.dsp.exec_cmd("~/hyprwhspr/transcribe.sh"))
 
-hl.bind("SUPER + E", function() hl.dispatch("hyprexpo:expo", "toggle") end)
+-- Workspace overview grid via hyprtasking (replaces the removed hyprexpo plugin)
+hl.bind("SUPER + E", function() hl.plugin.hyprtasking.toggle("all") end)
+
+-- While the overview is open: arrows navigate the grid, Escape closes it.
+-- non_consuming lets these keys pass through normally when the overview is closed.
+hl.bind("left",   function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.move("left")  end end, { non_consuming = true })
+hl.bind("right",  function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.move("right") end end, { non_consuming = true })
+hl.bind("up",     function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.move("up")    end end, { non_consuming = true })
+hl.bind("down",   function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.move("down")  end end, { non_consuming = true })
+hl.bind("Escape", function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.toggle("all") end end, { non_consuming = true })
 
 -- Control your input devices
 
@@ -106,24 +115,25 @@ hl.config({
     },
 })
 
+-- hyprtasking overview: grid sized to fit all 20 workspaces (4 rows x 5 cols)
+hl.config({
+    plugin = {
+        hyprtasking = {
+            layout = "grid",
+            gap_size = 8,
+            border_size = 2,
+            grid = {
+                rows = 4,
+                cols = 5,
+            },
+            jump = {
+                enabled = true,          -- show 1-9,0,a-z labels on each tile
+                label_size = 32,
+            },
+        },
+    },
+})
+
 -- Scroll faster in the terminal
 
 -- windowrule = scrolltouchpad 1.5, class:Alacritty
-
--- TODO(manual-migration): plugin config requires the plugin to be loaded first (hl.plugin.load); uncomment once loaded:
--- hl.config({
---     plugin = {
---         hyprexpo = {
---             columns = 5,
---             gap_size = 5,
---             bg_col = "rgb(111111)",
---             workspace_method = "center current",
---             enable_gesture = true,
---             gesture_distance = 300,
---         },
---     },
--- })
-
-hl.on("hyprland.start", function()
-    hl.exec_cmd("hyprpm reload -n")
-end)
