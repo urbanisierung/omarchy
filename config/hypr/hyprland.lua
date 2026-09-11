@@ -115,24 +115,9 @@ hl.config({
     },
 })
 
--- hyprtasking overview: grid sized to fit all 20 workspaces (4 rows x 5 cols)
-hl.config({
-    plugin = {
-        hyprtasking = {
-            layout = "grid",
-            gap_size = 8,
-            border_size = 2,
-            grid = {
-                rows = 4,
-                cols = 5,
-            },
-            jump = {
-                enabled = true,          -- show 1-9,0,a-z labels on each tile
-                label_size = 32,
-            },
-        },
-    },
-})
+-- hyprtasking overview settings are applied at runtime in the hyprland.start
+-- handler below (after the plugin loads). Applying them here at parse time
+-- fails with "unknown config key" because the plugin isn't loaded yet.
 
 -- Scroll faster in the terminal
 
