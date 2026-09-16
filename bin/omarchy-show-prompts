@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# Show a searchable list of prompts in wofi and copy the selected one.
+#
+# Data source: one or more Markdown files listed in PROMPT_FILES below.
+#   Each file is a collection of prompts where every H2 (`## ...`) starts a
+#   new prompt. The H2 line is the title (including any `#tags`) and is what
+#   gets shown in the menu. Everything until the next H2 (or EOF) is the body.
+#
+# Interaction:
+#   Enter -> copy the selected prompt's body to the clipboard (wl-copy)
+
+set -euo pipefail
+
+# Markdown files to source prompts from (first existing entries win on title clash).
+PROMPT_FILES=(
+  "$HOME/github.com/urbanisierung/life-os/Resources/ai/useful-prompts.prompts.md"
+)
+
+WOFI_ARGS=(-dmenu -i --width 60% --height 70% -p "Prompts" -O alphabetical)
+
+# Parallel arrays: TITLES[i] is shown in the menu, BODIES[i] is copied on select.
+TITLES=()
+BODIES=()
+
+current_title=""
+current_body=""
+
+flush() {
+  if [ -n "$current_title" ]; then
+    TITLES+=("$current_title")
+    BODIES+=("$current_body")
+  fi
+}
+
+for file in "${PROMPT_FILES[@]}"; do
+  [ -f "$file" ] || continue
+  current_title=""
+  current_body=""
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ "$line" =~ ^##[[:space:]]+(.*) ]]; then
+      flush
+      current_title="${BASH_REMATCH[1]}"
+      current_body=""
+    elif [ -n "$current_title" ]; then
+      if [ -z "$current_body" ]; then
+        current_body="$line"
+      else
+        current_body+=$'\n'"$line"
+      fi
+    fi
+  done <"$file"
+  flush
+done
+
+if [ ${#TITLES[@]} -eq 0 ]; then
+  notify-send "omarchy-show-prompts" "No prompts found" 2>/dev/null || true
+  exit 0
+fi
+
+chosen=$(printf '%s\n' "${TITLES[@]}" | flock --nonblock /tmp/.wofi.lock -c "wofi ${WOFI_ARGS[*]}")
+
+if [ -z "$chosen" ]; then
+  exit 0
+fi
+
+for i in "${!TITLES[@]}"; do
+  if [ "${TITLES[$i]}" = "$chosen" ]; then
+    # Trim leading and trailing blank lines before copying.
+    body=$(printf '%s\n' "${BODIES[$i]}" | sed -e '/./,$!d' | tac | sed -e '/./,$!d' | tac)
+    printf '%s' "$body" | wl-copy
+    notify-send "Prompt copied" "$chosen" -t 2000 2>/dev/null || true
+    break
+  fi
+done

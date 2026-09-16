@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Start a new Claude Code session in the browser.
+#
+# Flow (all via wofi, keyboard/mouse friendly):
+#   1. Pick a repo from ~/.config/eee/history (searchable)
+#   2. Type a prompt (free text)
+# Then open https://claude.ai/code?prompt=...&repo=owner/name&branch=main
+# in the default browser. Every input is URL-encoded.
+
+set -euo pipefail
+
+HISTORY_FILE="${EEE_HISTORY_FILE:-$HOME/.config/eee/history}"
+BRANCH="main"
+CLAUDE_BASE="https://claude.ai/code"
+
+WOFI_REPO=(-dmenu -i --width 50% --height 60% -p "Claude Code: repo" -O default)
+WOFI_PROMPT=(-dmenu -i --width 60% --height 25% -p "Claude Code: prompt")
+
+if [ ! -f "$HISTORY_FILE" ]; then
+  notify-send "omarchy-claude-code" "Repo history not found: $HISTORY_FILE" 2>/dev/null || true
+  exit 1
+fi
+
+# URL-encode a query value; spaces become + (matching the documented pattern).
+enc_prompt() { python3 -c 'import sys,urllib.parse; print(urllib.parse.quote_plus(sys.argv[1]))' "$1"; }
+# Keep the owner/name slash structural, encode everything else.
+enc_repo() { python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe="/"))' "$1"; }
+
+# Pick a repo (dedupe, preserve most-recent-first history order).
+repo=$(awk 'NF && !seen[$0]++' "$HISTORY_FILE" |
+  flock --nonblock /tmp/.wofi.lock -c "wofi ${WOFI_REPO[*]}")
+
+if [ -z "$repo" ]; then
+  exit 0
+fi
+
+# Type the prompt (empty stdin: wofi returns the typed text on Enter).
+prompt=$(printf '' | flock --nonblock /tmp/.wofi.lock -c "wofi ${WOFI_PROMPT[*]}")
+
+if [ -z "$prompt" ]; then
+  exit 0
+fi
+
+url="${CLAUDE_BASE}?prompt=$(enc_prompt "$prompt")&repo=$(enc_repo "$repo")&branch=$(enc_prompt "$BRANCH")"
+
+setsid xdg-open "$url" >/dev/null 2>&1

@@ -54,6 +54,10 @@ hl.bind("SUPER + K", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-show-ke
 
 hl.bind("SUPER + SHIFT + K", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-show-commands"))
 
+hl.bind("SUPER + I", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-show-prompts"))
+
+hl.bind("SUPER + SHIFT + C", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-claude-code"))
+
 hl.bind("SUPER + SHIFT + U", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-claude-usage"))
 
 hl.bind("SUPER + U", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-show-repos"))
