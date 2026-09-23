@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Read-only status labels for hyprlock; no daemon or persistent state."""
+
+import argparse
+import os
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def calendar_status():
+    now = datetime.now(tz=timezone.utc).astimezone()
+    start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    end = start.replace(year=now.year + 1)
+    progress = (now - start) / (end - start) * 100
+    return f"{now:%A · %d %B %Y}\nYear progress · {progress:.1f}%"
+
+
+def format_duration(seconds):
+    minutes = max(0, int(seconds)) // 60
+    days, minutes = divmod(minutes, 1440)
+    hours, minutes = divmod(minutes, 60)
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m" if minutes else "<1m"
+
+
+def lock_duration():
+    pid = os.getppid()
+    while pid > 1:
+        try:
+            stat = Path(f"/proc/{pid}/stat").read_text()
+        except FileNotFoundError:
+            return ""
+        # comm can contain spaces and parentheses; fields after it start at 3.
+        end = stat.rindex(")")
+        name = stat[stat.index("(") + 1 : end]
+        fields = stat[end + 2 :].split()
+        if name == "hyprlock":
+            started = int(fields[19]) / os.sysconf("SC_CLK_TCK")
+            # Both clocks include suspend and are immune to wall-clock changes.
+            elapsed = time.clock_gettime(time.CLOCK_BOOTTIME) - started
+            return f"Locked for {format_duration(elapsed)}"
+        pid = int(fields[1])
+    return ""
+
+
+def battery_status():
+    batteries = []
+    for supply in sorted(Path("/sys/class/power_supply").iterdir()):
+        try:
+            if (supply / "type").read_text().strip() != "Battery":
+                continue
+            scope = supply / "scope"
+            if scope.exists() and scope.read_text().strip() == "Device":
+                continue
+            capacity = int((supply / "capacity").read_text())
+            status = (supply / "status").read_text().strip()
+        except FileNotFoundError:
+            # Hot-unplugged supplies and batteries without capacity are omitted.
+            continue
+        status = {
+            "Charging": "charging",
+            "Discharging": "discharging",
+            "Full": "full",
+            "Not charging": "not charging",
+        }.get(status, "unknown")
+        batteries.append(f"Battery {capacity}% · {status}")
+    return "  |  ".join(batteries)
+
+
+def system_status():
+    memory = {}
+    for line in Path("/proc/meminfo").read_text().splitlines():
+        key, value = line.split(":", 1)
+        memory[key] = int(value.split()[0])
+    total = memory["MemTotal"] / 1048576
+    used = (memory["MemTotal"] - memory["MemAvailable"]) / 1048576
+    load = os.getloadavg()[0]
+    return f"CPU load (1m) {load:.2f} · RAM {used:.1f}/{total:.1f} GiB"
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("label", choices=("calendar", "duration", "battery", "system"))
+    args = parser.parse_args()
+    labels = {
+        "calendar": calendar_status,
+        "duration": lock_duration,
+        "battery": battery_status,
+        "system": system_status,
+    }
+    print(labels[args.label]())
+
+
+if __name__ == "__main__":
+    main()

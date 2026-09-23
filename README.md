@@ -29,6 +29,24 @@ X-KDE-Protocols=zoommtg;zoomus;tel;callto;zoomphonecall;zoomphonesms;zoomcontact
 Name[en_US]=Zoom Workplace
 ```
 
+## Lock screen status
+
+All themes include the weekday, full date, and year progress above the clock,
+a clock above the password field, elapsed lock time below it,
+and battery plus system status at the bottom. The calendar uses local time and
+refreshes every minute; year progress accounts for leap years. Dark translucent backplates keep
+the text readable on light backgrounds. The labels are configured in
+`config/hypr/hyprlock-status.conf`; changes appear the next time you lock.
+
+`bin/omarchy-lock-status` uses Python 3's standard library and local Linux system
+data only. Lock duration is measured from hyprlock startup, includes suspend time,
+and refreshes every 10 seconds. Battery status excludes peripherals and is hidden
+when no system battery is available. System status shows one-minute CPU load
+(not CPU percentage) and RAM usage based on available memory, also every 10 seconds.
+Authentication, display-off behavior, and power profiles are unchanged.
+
+Tests: `python3 -m unittest discover -s tests`.
+
 ## License
 
 Omarchy is released under the [MIT License](https://opensource.org/licenses/MIT).
