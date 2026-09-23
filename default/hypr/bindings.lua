@@ -64,6 +64,8 @@ hl.bind("SUPER + U", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-show-re
 
 hl.bind("SHIFT + CTRL + M", hl.dsp.exec_cmd("copyq toggle"))
 
+hl.bind("SHIFT + CTRL + J", hl.dsp.exec_cmd("PATH=\"$HOME/.local/bin:$PATH\" lifosy-palette-toggle"))
+
 -- bind = SUPER, W, killactive,
 
 hl.bind("SUPER + SHIFT + Q", hl.dsp.window.close())
