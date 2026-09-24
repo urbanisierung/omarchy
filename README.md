@@ -6,7 +6,29 @@ Turn a fresh Fedora installation into a fully-configured, beautiful, and modern 
 
 Read more at [omarchy.org](https://omarchy.org).
 
-Install: wget -qO- https://u11g.com/install | bash
+## Installation status
+
+Fresh-install repairs are in progress; do not run the installer on your daily-use
+workstation to test them. See the [audit and action plan](docs/README.md).
+The previously advertised `https://u11g.com/install` endpoint did not return a
+usable installer during the audit and has not been repaired or revalidated.
+
+Bootstrap now refuses to replace any existing `~/.local/share/omarchy` path,
+including symlinks. A fresh clone is validated in temporary storage before being
+published. If installation fails after publication, the checkout is retained for
+inspection; rerunning bootstrap will refuse it rather than delete it. Do not
+remove your working checkout to bypass this protection. Installation stages are
+not yet fully safe to rerun: review the failure and back up affected configuration
+before invoking the retained `install.sh` with Bash in a disposable test system.
+
+`OMARCHY_REF` can select a branch, tag, or other fetchable Git ref. Named branches
+retain tracking; tags and fetch-only refs produce detached checkouts that the
+existing update helper cannot update normally. No ref selection skips validation.
+
+Installer regression tests use temporary homes and fake package/privilege/session
+commands; Git integration uses only local repositories. Run all tests with
+`python3 -B -m unittest discover -s tests`. These tests do not perform a real
+Fedora installation or establish first-login readiness.
 
 TODOs: Install eza, yazi
 
