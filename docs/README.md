@@ -8,6 +8,7 @@ Fedora-based Hyprland desktop and tracks implementation of the resulting plan.
 | [Installation audit](installation-audit.md) | Findings, evidence, severity, and verification limits |
 | [Action plan](action-plan.md) | Ordered implementation tasks and acceptance criteria |
 | [Naming proposals](naming-proposals.md) | Five possible identities and naming tradeoffs |
+| [Kickstart USB](kickstart-usb.md) | Guided test-media building, VM gate, flashing and recovery |
 
 **Current assessment:** the installer is not yet a dependable way to reproduce
 the configured desktop on a fresh Fedora system. Passing shell syntax checks and
@@ -16,6 +17,11 @@ focused regression tests does not establish fresh-install readiness.
 The first bootstrap/early-failure safety batch is implemented, with 36 passing
 tests. See [implementation progress](action-plan.md#implementation-progress) for
 the exact scope and remaining limitations. Live desktop configuration is unchanged.
+
+Guided Fedora 44 USB assets and an ISO builder are now implemented separately
+from the desktop stages. ISO creation, VM boot, and physical installation remain
+unverified; follow the [USB guide](kickstart-usb.md) rather than treating this as
+an unattended disk-wiping installer.
 
 Start with the decisions in [Phase 0](action-plan.md#phase-0-agree-on-the-supported-installation).
 Then repair bootstrap and desktop provisioning before expanding features.

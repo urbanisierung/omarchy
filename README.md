@@ -30,6 +30,11 @@ commands; Git integration uses only local repositories. Run all tests with
 `python3 -B -m unittest discover -s tests`. These tests do not perform a real
 Fedora installation or establish first-login readiness.
 
+For disposable laptop testing, see the [guided Kickstart USB guide](docs/kickstart-usb.md).
+It includes ISO preparation/build tooling and a pinned first-login setup offer.
+Real ISO boot and fresh-install validation remain outstanding; it is not an
+unattended disk-wiping installer.
+
 TODOs: Install eza, yazi
 
 Graphics Intel: https://fostips.com/hardware-acceleration-video-fedora/?amp=1

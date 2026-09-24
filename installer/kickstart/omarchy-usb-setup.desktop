@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Omarchy test installation
+Comment=Offer the pinned desktop setup after signing into Fedora
+Exec=gnome-terminal -- /usr/bin/bash /usr/local/lib/omarchy-usb/setup.sh --autostart
+TryExec=gnome-terminal
+OnlyShowIn=GNOME;
+Terminal=false

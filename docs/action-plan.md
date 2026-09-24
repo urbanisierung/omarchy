@@ -1,6 +1,7 @@
 # Installation repair and project identity action plan
 
-Date: 2026-09-24. Status: first safety batch implemented; overall plan in progress.
+Date: 2026-09-24. Status: first safety batch and guided USB tooling implemented;
+overall plan in progress.
 
 This checklist implements the findings in [installation-audit.md](installation-audit.md).
 Checked items have focused implementation/test coverage, not fresh-VM sign-off.
@@ -40,6 +41,36 @@ formatting was reviewed manually. Fresh-VM testing remains outstanding.
 This batch deliberately implements policy-independent safety fixes before Phase 0
 decisions. It does not fix the published download endpoint, make all installer
 reruns safe, validate downloaded script authenticity, or certify Fedora support.
+
+## Guided USB tooling: test-media preparation
+
+Implemented separately from the existing sourced installer stages:
+
+- [x] Fedora 44 Everything x86_64 Kickstart with Workstation/GNOME package
+  selection; leave disk selection, encryption, keyboard/timezone and credentials
+  interactive. No automatic partition wiping or embedded passwords.
+- [x] Stage a GNOME first-login setup offer rather than run installation in
+  Anaconda. Preserve existing bootstrap guards and pin both bootstrap and checkout
+  to one committed revision. Explicitly warn about existing TTY autologin behavior.
+- [x] Require a terminal and explicit confirmation; record private logs, result
+  and an attempt marker. Block concurrent launches and automatic retries.
+- [x] Add an ISO builder with existing-output protection, input SHA256 check,
+  payload manifest, Fedora-version syntax validation and full EFI mkksiso path.
+  Preparation mode needs no root privileges. No disk-writing code is included.
+- [x] Add 21 isolated tests (57 total) for launcher and build safety.
+- [x] Verify Fedora package/environment availability and Kickstart syntax.
+- [ ] Build a real ISO from a signature-verified Fedora source image.
+- [ ] Pass the UEFI VM, account-creation, encryption, first-login and failure gates.
+- [ ] Identify/confirm USB device, flash and verify it, then test spare hardware.
+
+See [the USB guide](kickstart-usb.md) for commands and recovery. `lorax` and system
+`pykickstart` are not installed on the build host; isolated Kickstart validation
+used a temporary pykickstart environment. No image has been built or flashed,
+and no live desktop settings were changed. This does not close Phase 0 decisions
+or certify the existing package/session installer.
+
+Validation: all 57 unittests pass; Bash syntax, ShellCheck, Ruff formatting/lint,
+and Fedora 44 Kickstart syntax pass. Tests do not execute a real installer.
 
 ## Objectives and constraints
 
