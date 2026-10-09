@@ -3,7 +3,7 @@
 hl.on("hyprland.start", function()
     hl.exec_cmd("hypridle & mako & waybar & fcitx5")
     hl.exec_cmd("swaybg -i ~/.config/omarchy/current/background -m fill")
-    hl.exec_cmd("systemctl --user start hyprpolkitagent")
+    hl.exec_cmd("/usr/libexec/kf6/polkit-kde-authentication-agent-1")
     hl.exec_cmd("wl-clip-persist --clipboard regular & clipse -listen")
     hl.exec_cmd("copyq")
     hl.exec_cmd("~/github.com/urbanisierung/dotfiles/rsync-sync.sh")

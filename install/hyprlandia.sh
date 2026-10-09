@@ -5,9 +5,9 @@ sudo dnf copr enable -y solopasha/hyprland
 
 sudo dnf install -y \
   hyprland hyprshot hyprpicker hyprlock hypridle waybar wofi mako swaybg \
-  xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
+  xdg-desktop-portal-hyprland xdg-desktop-portal-gtk polkit-kde
 
-# Note: hyprpolkitagent and hyprland-qtutils may not be available in Fedora repos
+# Note: hyprland-qtutils may not be available in Fedora repos
 # These may need to be compiled from source or installed via Flatpak
 
 # Start Hyprland on first session

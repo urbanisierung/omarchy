@@ -35,6 +35,8 @@ elif name == "sudo":
     if args == ["tee", "/etc/yum.repos.d/vscode.repo"]:
         sys.stdin.read()
         sys.exit(0)
+    if args == ["dnf", "copr", "enable", "-y", "solopasha/hyprland"]:
+        sys.exit(0)
     allowed_dnf = args == ["dnf", "update", "-y"] or (
         args[:3] == ["dnf", "install", "-y"] and len(args) == 4 and (
             args[3] in ("git", "plocate", "code") or args[3] in (
@@ -43,6 +45,12 @@ elif name == "sudo":
             )
         )
     )
+    allowed_dnf = allowed_dnf or args == [
+        "dnf", "install", "-y",
+        "hyprland", "hyprshot", "hyprpicker", "hyprlock", "hypridle", "waybar",
+        "wofi", "mako", "swaybg", "xdg-desktop-portal-hyprland",
+        "xdg-desktop-portal-gtk", "polkit-kde",
+    ]
     if allowed_dnf:
         if os.environ.get("FAIL_DNF") and os.environ["FAIL_DNF"] in args:
             sys.exit(42)
@@ -395,6 +403,39 @@ class InstallationTests(unittest.TestCase):
             wrapper, VSCODE_STAGE=str(ROOT / "install/vscode.sh"), FAIL_DNF="code"
         )
         self.assertEqual(result.returncode, 42)
+
+    def test_hyprland_installs_the_configured_polkit_agent(self):
+        wrapper = self.root / "hyprland-test.sh"
+        wrapper.write_text('set -e\nsource "$HYPRLAND_STAGE"\n')
+        result = self.run_script(
+            wrapper, HYPRLAND_STAGE=str(ROOT / "install/hyprlandia.sh")
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(
+            any(
+                call[:4] == ["sudo", "dnf", "install", "-y"] and "polkit-kde" in call
+                for call in self.calls()
+            )
+        )
+        startup = (ROOT / "default/hypr/autostart.lua").read_text()
+        self.assertIn(
+            'hl.exec_cmd("/usr/libexec/kf6/polkit-kde-authentication-agent-1")',
+            startup,
+        )
+        self.assertNotIn("hyprpolkitagent", startup)
+
+    def test_hyprland_agent_install_failure_preserves_login_config(self):
+        profile = self.home / ".bash_profile"
+        profile.write_text("keep existing login config\n")
+        wrapper = self.root / "hyprland-test.sh"
+        wrapper.write_text('set -e\nsource "$HYPRLAND_STAGE"\n')
+        result = self.run_script(
+            wrapper,
+            HYPRLAND_STAGE=str(ROOT / "install/hyprlandia.sh"),
+            FAIL_DNF="polkit-kde",
+        )
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertEqual(profile.read_text(), "keep existing login config\n")
 
 
 if __name__ == "__main__":
