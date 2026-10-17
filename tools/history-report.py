@@ -32,13 +32,16 @@ SECRET_PATTERNS = [
     (re.compile(r"(?i)(authorization:\s*)(bearer\s+)?\S+"), r"\1<REDACTED>"),
     (re.compile(r"\b(gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|xox[abpr]-[A-Za-z0-9-]+|AKIA[0-9A-Z]{16})\b"), "<REDACTED>"),
     (re.compile(r"(https?://)[^/\s:@]+:[^/\s@]+@"), r"\1<REDACTED>@"),
-    (re.compile(r"\b[A-Za-z0-9+/_=-]{40,}\b"), "<LONG-STRING>"),
 ]
+LONG_STRING = re.compile(r"\b[A-Za-z0-9+/_=-]{40,}\b")
+PATH_LIKE = re.compile(r"^[a-z0-9_.-]*(/[a-z0-9_.-]*)+$")
 
 
 def redact(cmd: str) -> str:
     for pattern, repl in SECRET_PATTERNS:
         cmd = pattern.sub(repl, cmd)
+    # Long tokens look like secrets, but lowercase paths (repo dirs) are kept.
+    cmd = LONG_STRING.sub(lambda m: m.group(0) if PATH_LIKE.match(m.group(0)) else "<LONG-STRING>", cmd)
     return cmd.replace(str(HOME), "~")
 
 
@@ -171,6 +174,7 @@ def main():
     ap.add_argument("--top", type=int, default=30, help="rows per section")
     ap.add_argument("--min-len", type=int, default=25, help="min length for 'long repeated command' section")
     ap.add_argument("--all-sources", action="store_true", help="read shell history files even when atuin exists")
+    ap.add_argument("--since", type=int, metavar="DAYS", help="only commands from the last DAYS days (needs timestamps)")
     ap.add_argument("-o", "--output", help="write report here instead of stdout")
     args = ap.parse_args()
 
@@ -185,15 +189,20 @@ def main():
         except Exception as exc:  # keep going with other sources
             print(f"warning: could not read {path}: {exc}")
 
+    if args.since:
+        import time
+        cutoff = time.time() - args.since * 86400
+        entries = [e for e in entries if e.get("ts") and e["ts"] >= cutoff]
+
     if not entries:
-        print("No history found. Pass a file with --history.")
+        print("No history found (or none in the --since window). Pass a file with --history.")
         return
 
     N = args.top
     cmds = [e["cmd"] for e in entries]
     known = known_aliases()
     out = ["# Shell history report", ""]
-    out.append("Sources: " + ", ".join(f"{n} ({p.name})" for n, p, _ in sources) + f" — {len(cmds)} commands, {len(set(cmds))} unique.")
+    out.append("Sources: " + ", ".join(f"{n} ({p.name})" for n, p, _ in sources) + (f", last {args.since} days" if args.since else "") + f" — {len(cmds)} commands, {len(set(cmds))} unique.")
     out.append("")
 
     # 1. Programs
