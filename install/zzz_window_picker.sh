@@ -160,40 +160,18 @@ EOF
 log_ok "hyprland-portals.conf written"
 
 # =============================================================================
-# STEP 6 — Write portal restart script
-#           Kills gnome portal (which auto-starts and conflicts) and restarts
-#           the hyprland portal cleanly on each Hyprland session start
+# Portal reset at login and the rescue key are part of Omarchy itself:
+#   - default/hypr/autostart.lua runs `omarchy-restart-portal --boot`
+#   - SUPER + ALT + S runs `omarchy-restart-portal` during a session
+# (Older versions of this script wrote fix-portals.sh / fix-screenshare.sh and
+# patched hyprland.conf, which the Lua config no longer reads.)
 # =============================================================================
-log_section "Step 6: Writing portal restart script"
-
-cat > "$HOME/.config/hypr/fix-portals.sh" << 'EOF'
-#!/bin/bash
-# Runs on Hyprland startup via exec-once
-# Kills any competing portal backends and starts a clean hyprland portal
-
-sleep 2
-
-# Kill gnome portal — it auto-starts even in Hyprland sessions and conflicts
-killall xdg-desktop-portal-gnome 2>/dev/null || true
-killall xdg-desktop-portal-gtk   2>/dev/null || true
-killall xdg-desktop-portal-hyprland 2>/dev/null || true
-killall xdg-desktop-portal       2>/dev/null || true
-
-sleep 1
-
-/usr/libexec/xdg-desktop-portal-hyprland &
-sleep 2
-/usr/libexec/xdg-desktop-portal &
-EOF
-
-chmod +x "$HOME/.config/hypr/fix-portals.sh"
-log_ok "fix-portals.sh written to ~/.config/hypr/fix-portals.sh"
 
 # =============================================================================
-# STEP 7 — Write Zoom wrapper script
+# STEP 6 — Write Zoom wrapper script
 #           Ensures portal is clean before Zoom starts, sets correct env vars
 # =============================================================================
-log_section "Step 7: Writing Zoom wrapper script"
+log_section "Step 6: Writing Zoom wrapper script"
 
 mkdir -p "$HOME/.local/bin"
 
@@ -203,13 +181,8 @@ cat > "$HOME/.local/bin/zoomw" << 'EOF'
 # Kills the gnome portal and restarts the hyprland portal fresh before launch
 # to avoid the black screen on second share attempt
 
-# Kill gnome portal that fights with hyprland portal
-killall xdg-desktop-portal-gnome 2>/dev/null || true
-
-# Ensure hyprland portal is running and fresh
-systemctl --user restart xdg-desktop-portal-hyprland.service
-sleep 1
-systemctl --user restart xdg-desktop-portal.service
+# Stop competing portals and restart the hyprland portal fresh
+~/.local/share/omarchy/bin/omarchy-restart-portal --quiet >/dev/null
 sleep 1
 
 # Launch Zoom with German keyboard layout
@@ -227,79 +200,9 @@ if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
 fi
 
 # =============================================================================
-# STEP 8 — Write portal rescue keybind script
-#           Hit Super+Shift+P after a share goes black to recover without
-#           restarting Zoom or leaving the meeting
+# STEP 7 — Patch zoomus.conf
 # =============================================================================
-log_section "Step 8: Writing portal rescue script"
-
-cat > "$HOME/.config/hypr/fix-screenshare.sh" << 'EOF'
-#!/bin/bash
-# Restart portal without touching Zoom
-# Bind to a key in hyprland.conf:
-#   bind = SUPER SHIFT, P, exec, ~/.config/hypr/fix-screenshare.sh
-systemctl --user restart xdg-desktop-portal-hyprland.service
-sleep 1
-systemctl --user restart xdg-desktop-portal.service
-EOF
-
-chmod +x "$HOME/.config/hypr/fix-screenshare.sh"
-log_ok "Rescue script written to ~/.config/hypr/fix-screenshare.sh"
-
-# =============================================================================
-# STEP 9 — Patch hyprland.conf
-# =============================================================================
-log_section "Step 9: Patching hyprland.conf"
-
-HYPRCONF="$HOME/.config/hypr/hyprland.conf"
-
-if [[ ! -f "$HYPRCONF" ]]; then
-    log_warn "hyprland.conf not found at $HYPRCONF — skipping auto-patch"
-    log_warn "Add these lines manually to your hyprland config:"
-else
-    # Check what's already there and only add missing lines
-    ADDITIONS=""
-
-    grep -q "XDG_CURRENT_DESKTOP" "$HYPRCONF" || \
-        ADDITIONS+=$'\nenv = XDG_CURRENT_DESKTOP, Hyprland'
-    grep -q "XDG_SESSION_TYPE" "$HYPRCONF" || \
-        ADDITIONS+=$'\nenv = XDG_SESSION_TYPE, wayland'
-    grep -q "XDG_SESSION_DESKTOP" "$HYPRCONF" || \
-        ADDITIONS+=$'\nenv = XDG_SESSION_DESKTOP, Hyprland'
-    grep -q "dbus-update-activation-environment" "$HYPRCONF" || \
-        ADDITIONS+=$'\nexec-once = dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP'
-    grep -q "fix-portals.sh" "$HYPRCONF" || \
-        ADDITIONS+=$'\nexec-once = ~/.config/hypr/fix-portals.sh'
-    grep -q "fix-screenshare.sh" "$HYPRCONF" || \
-        ADDITIONS+=$'\nbind = SUPER SHIFT, P, exec, ~/.config/hypr/fix-screenshare.sh'
-
-    if [[ -n "$ADDITIONS" ]]; then
-        cp "$HYPRCONF" "$HYPRCONF.bak"
-        log_info "Backed up hyprland.conf to hyprland.conf.bak"
-        printf "\n# === Zoom screen sharing fix (added by setup-zoom-hyprland.sh) ===%s\n" \
-            "$ADDITIONS" >> "$HYPRCONF"
-        log_ok "hyprland.conf patched"
-    else
-        log_ok "hyprland.conf already has all required lines — nothing to add"
-    fi
-fi
-
-# Print what to add manually if conf wasn't found
-if [[ ! -f "$HYPRCONF" ]]; then
-    cat << 'MANUAL'
-    env = XDG_CURRENT_DESKTOP, Hyprland
-    env = XDG_SESSION_TYPE, wayland
-    env = XDG_SESSION_DESKTOP, Hyprland
-    exec-once = dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
-    exec-once = ~/.config/hypr/fix-portals.sh
-    bind = SUPER SHIFT, P, exec, ~/.config/hypr/fix-screenshare.sh
-MANUAL
-fi
-
-# =============================================================================
-# STEP 10 — Patch zoomus.conf
-# =============================================================================
-log_section "Step 10: Patching Zoom config"
+log_section "Step 7: Patching Zoom config"
 
 ZOOMCONF="$HOME/.config/zoomus.conf"
 
@@ -338,19 +241,15 @@ else
 fi
 
 # =============================================================================
-# STEP 11 — Restart portals now
+# STEP 8 — Restart portals now
 # =============================================================================
-log_section "Step 11: Restarting portals"
+log_section "Step 8: Restarting portals"
 
-systemctl --user restart xdg-desktop-portal-hyprland.service && \
-    log_ok "xdg-desktop-portal-hyprland restarted" || \
-    log_warn "Failed to restart xdg-desktop-portal-hyprland"
-
-sleep 1
-
-systemctl --user restart xdg-desktop-portal.service && \
-    log_ok "xdg-desktop-portal restarted" || \
-    log_warn "Failed to restart xdg-desktop-portal"
+if "$HOME/.local/share/omarchy/bin/omarchy-restart-portal" --quiet >/dev/null; then
+    log_ok "Portals restarted"
+else
+    log_warn "Failed to restart portals"
+fi
 
 # =============================================================================
 # Done
@@ -363,7 +262,7 @@ echo "    Run Zoom via the wrapper:  zoomw"
 echo "    In Zoom: Settings → Share Screen → Advanced → set 'Pipewire Mode'"
 echo ""
 echo -e "  ${GREEN}If screen share goes black mid-meeting:${NC}"
-echo "    Press  Super + Shift + P  to rescue the portal without leaving the meeting"
+echo "    Press  Super + Alt + S  to rescue the portal without leaving the meeting"
 echo ""
-echo -e "  ${YELLOW}Log out and back in (or reboot) for all hyprland.conf changes to take effect.${NC}"
+echo -e "  ${YELLOW}Log out and back in (or reboot) for all changes to take effect.${NC}"
 echo ""

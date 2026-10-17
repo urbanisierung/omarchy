@@ -175,6 +175,12 @@ class DesktopHelpersTest(unittest.TestCase):
         self.assertEqual(len(self.calls("systemctl")), 2)
         self.assertEqual(self.calls("notify-send"), [])
 
+    def test_restart_portal_quiet(self):
+        self.run_bin("omarchy-restart-portal", "--quiet")
+        self.assertEqual(len(self.calls("systemctl")), 2)
+        self.assertEqual(self.calls("notify-send"), [])
+        self.assertEqual(self.calls("dbus-update-activation-environment"), [])
+
     def test_restart_portal_boot_notifies_on_failure(self):
         self.run_bin("omarchy-restart-portal", "--boot", env={"SYSTEMCTL_RC": "1"}, check=False)
         self.assertTrue(any("critical" in c for c in self.calls("notify-send")))
@@ -227,6 +233,23 @@ class WiringTest(unittest.TestCase):
     def test_waybar_config_is_valid_json_and_uses_wifi_menu(self):
         cfg = json.loads((ROOT / "config/waybar/config").read_text())
         self.assertIn("omarchy-wifi", cfg["network"]["on-click"])
+
+    def test_bindings_use_scripts_from_the_repo(self):
+        text = (ROOT / "default/hypr/bindings.lua").read_text()
+        for script in ("spotlight.sh", "translate_manager.py"):
+            self.assertNotIn(f"~/.local/bin/{script}", text)
+            self.assertIn(f"~/.local/share/omarchy/bin/{script}", text)
+            self.assertTrue((BIN / script).exists())
+
+    def test_nvidia_env_goes_to_lua_file_loaded_by_hyprland_lua(self):
+        self.assertNotIn("hyprland.conf", (ROOT / "install/nvidia.sh").read_text())
+        self.assertIn("nvidia.lua", (ROOT / "install/nvidia.sh").read_text())
+        self.assertIn("/.config/hypr/nvidia.lua", (ROOT / "config/hypr/hyprland.lua").read_text())
+
+    def test_zoom_installer_no_longer_patches_hyprland_conf(self):
+        text = (ROOT / "install/zzz_window_picker.sh").read_text()
+        self.assertNotIn('HYPRCONF=', text)
+        self.assertIn("omarchy-restart-portal --quiet", text)
 
     def test_new_bindings_present_and_unique(self):
         import re

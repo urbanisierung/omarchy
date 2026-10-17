@@ -203,6 +203,34 @@ class DevHelpersTest(unittest.TestCase):
         self.assertIn("upstream/main", r.stdout)
         self.assertTrue((self.work / "from-upstream.txt").exists())
 
+    # gbf -------------------------------------------------------------------
+
+    def test_gbf_switches_to_local_branch(self):
+        self.git("branch", "feature/login-page")
+        self.run_cmd("gbf", extra_env={"FZF_PICK": "feature/login"})
+        self.assertEqual(self.git("branch", "--show-current"), "feature/login-page")
+
+    def test_gbf_tracks_remote_only_branch(self):
+        other = self.tmp / "other-gbf"
+        self.git("clone", "-q", str(self.origin), str(other), cwd=self.tmp)
+        self.git("switch", "-qc", "remote-work", cwd=other)
+        self.commit(other, "r.txt", "r")
+        self.git("push", "-qu", "origin", "remote-work", cwd=other)
+        self.git("fetch", "-q")
+        self.run_cmd("gbf", extra_env={"FZF_PICK": "origin/remote-work"})
+        self.assertEqual(self.git("branch", "--show-current"), "remote-work")
+        self.assertEqual(self.git("rev-parse", "--abbrev-ref", "@{u}"), "origin/remote-work")
+
+    def test_gbf_hides_current_and_duplicate_remote(self):
+        # fake fzf that dumps the list it was given
+        dump = self.tmp / "list"
+        fzf = Path(self.env["PATH"].split(":")[1]) / "fzf"
+        fzf.write_text(f"#!/bin/bash\ncat > {dump}\nexit 1\n")
+        self.git("branch", "other")
+        self.run_cmd("gbf", check=False)
+        names = [l.split("\t")[0] for l in dump.read_text().splitlines()]
+        self.assertEqual(names, ["other"])  # not main, not origin/main
+
     # pp --------------------------------------------------------------------
 
     def write_package(self, scripts, lock="pnpm-lock.yaml", **extra):

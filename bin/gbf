@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# gbf: fuzzy-find a branch and switch to it.
+#   gbf            -> pick from local and remote branches, newest first
+#   gbf login      -> same, with "login" pre-typed (switches right away if only one matches)
+#
+# Remote-only branches (origin/foo) are checked out as a local tracking branch.
+# Replaces typing `gco <long-branch-name>`. Uses fzf (falls back to a menu).
+
+set -euo pipefail
+
+git rev-parse --git-dir >/dev/null
+
+current="$(git branch --show-current)"
+
+# "<name>\t<age>\t<subject>", local first, then remote branches without a local copy.
+branches() {
+  declare -A seen=()
+  local name age subject short
+  while IFS=$'\t' read -r name age subject; do
+    seen[$name]=1
+    [[ "$name" == "$current" ]] && continue
+    printf '%s\t%s\t%s\n' "$name" "$age" "$subject"
+  done < <(git for-each-ref --sort=-committerdate \
+    --format='%(refname:short)%09%(committerdate:relative)%09%(subject)' refs/heads/)
+
+  while IFS=$'\t' read -r name age subject; do
+    [[ "$name" == */HEAD || "$name" != */* ]] && continue
+    short="${name#*/}"
+    [[ -n "${seen[$short]+x}" ]] && continue
+    seen[$short]=1
+    printf '%s\t%s\t%s\n' "$name" "$age" "$subject"
+  done < <(git for-each-ref --sort=-committerdate \
+    --format='%(refname:short)%09%(committerdate:relative)%09%(subject)' refs/remotes/)
+}
+
+list="$(branches)"
+[[ -n "$list" ]] || { echo "gbf: no other branches" >&2; exit 1; }
+
+if command -v fzf >/dev/null; then
+  pick="$(printf '%s\n' "$list" |
+    fzf --delimiter='\t' --query="${1:-}" --select-1 --exit-0 \
+      --prompt="switch › " --header="on: ${current:-detached}" \
+      --preview='git log --oneline --color=always -15 {1}' --preview-window=right,60%)" || exit 130
+else
+  mapfile -t names < <(printf '%s\n' "$list" | cut -f1 | grep -F -- "${1:-}" || true)
+  ((${#names[@]})) || { echo "gbf: no branch matches '${1:-}'" >&2; exit 1; }
+  PS3="branch #: "
+  select pick in "${names[@]}"; do [[ -n "$pick" ]] && break; done
+fi
+name="${pick%%$'\t'*}"
+[[ -n "$name" ]] || exit 130
+
+if git show-ref --verify --quiet "refs/heads/$name"; then
+  git switch "$name"
+else
+  # remote/foo -> local foo tracking remote/foo
+  git switch --track "$name"
+fi

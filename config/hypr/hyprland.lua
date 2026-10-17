@@ -28,6 +28,10 @@ dofile(os.getenv("HOME") .. "/.local/share/omarchy/default/hypr/bindings.lua")  
 
 dofile(os.getenv("HOME") .. "/.local/share/omarchy/default/hypr/envs.lua")  -- was: source = ~/.local/share/omarchy/default/hypr/envs.conf
 
+-- NVIDIA env vars, only on machines where install/nvidia.sh wrote this file
+-- (pcall: a missing file is fine and must not break the config)
+pcall(dofile, os.getenv("HOME") .. "/.config/hypr/nvidia.lua")
+
 dofile(os.getenv("HOME") .. "/.local/share/omarchy/default/hypr/looknfeel.lua")  -- was: source = ~/.local/share/omarchy/default/hypr/looknfeel.conf
 
 dofile(os.getenv("HOME") .. "/.local/share/omarchy/default/hypr/input.lua")  -- was: source = ~/.local/share/omarchy/default/hypr/input.conf

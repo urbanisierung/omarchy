@@ -37,15 +37,12 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
 
   sudo dracut --force
 
-  # Add NVIDIA environment variables to hyprland.conf
-  HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
-  if [ -f "$HYPRLAND_CONF" ]; then
-    cat >>"$HYPRLAND_CONF" <<'EOF'
-
-# NVIDIA environment variables
-env = NVD_BACKEND,direct
-env = LIBVA_DRIVER_NAME,nvidia
-env = __GLX_VENDOR_LIBRARY_NAME,nvidia
+  # NVIDIA environment variables, loaded by hyprland.lua when the file exists
+  mkdir -p "$HOME/.config/hypr"
+  cat >"$HOME/.config/hypr/nvidia.lua" <<'EOF'
+-- Written by omarchy install/nvidia.sh
+hl.env("NVD_BACKEND", "direct")
+hl.env("LIBVA_DRIVER_NAME", "nvidia")
+hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
 EOF
-  fi
 fi

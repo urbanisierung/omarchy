@@ -35,7 +35,7 @@ It includes ISO preparation/build tooling and a pinned first-login setup offer.
 Real ISO boot and fresh-install validation remain outstanding; it is not an
 unattended disk-wiping installer.
 
-TODOs: Install eza, yazi
+TODOs: Install yazi
 
 Graphics Intel: https://fostips.com/hardware-acceleration-video-fedora/?amp=1
 Start Zoom:

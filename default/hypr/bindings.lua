@@ -16,13 +16,13 @@ hl.bind("SUPER + Z", hl.dsp.exec_cmd(terminal .. " -e btop"))
 
 -- Offline Translation (Super + T)
 
-hl.bind("SUPER + T", hl.dsp.exec_cmd("python3 ~/.local/bin/translate_manager.py offline"))
+hl.bind("SUPER + T", hl.dsp.exec_cmd("python3 ~/.local/share/omarchy/bin/translate_manager.py offline"))
 
 -- Online DeepL Translation (Super + Shift + T)
 
-hl.bind("SUPER + SHIFT + T", hl.dsp.exec_cmd("python3 ~/.local/bin/translate_manager.py deepl"))
+hl.bind("SUPER + SHIFT + T", hl.dsp.exec_cmd("python3 ~/.local/share/omarchy/bin/translate_manager.py deepl"))
 
-hl.bind("SUPER + S", hl.dsp.exec_cmd("~/.local/bin/spotlight.sh"))
+hl.bind("SUPER + S", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/spotlight.sh"))
 
 hl.bind("SUPER + A", hl.dsp.exec_cmd(browser .. " --profile-directory=Default --app=\"https://chatgpt.com\" --name=\"ChatGPT\""))
 

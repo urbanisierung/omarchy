@@ -7,6 +7,7 @@
 # restarts xdg-desktop-portal-hyprland and xdg-desktop-portal.
 #
 #   omarchy-restart-portal          -> restart now and show a notification
+#   omarchy-restart-portal --quiet  -> restart now, notify only on failure
 #   omarchy-restart-portal --boot   -> for Hyprland autostart: wait for the
 #                                      session, share its environment with
 #                                      systemd/D-Bus, restart quietly (only
@@ -14,9 +15,10 @@
 
 set -uo pipefail
 
-boot=0
+quiet=0
+[[ "${1:-}" == "--quiet" ]] && quiet=1
 if [[ "${1:-}" == "--boot" ]]; then
-  boot=1
+  quiet=1
   sleep 2
   # Portals started by systemd need to know the Wayland display and desktop.
   dbus-update-activation-environment --systemd \
@@ -41,7 +43,7 @@ else
   urgency=critical
 fi
 
-if command -v notify-send >/dev/null && ! ((boot && ok)); then
+if command -v notify-send >/dev/null && ! ((quiet && ok)); then
   notify-send -a "Screen sharing" -u "$urgency" "$msg"
 fi
 echo "$msg"

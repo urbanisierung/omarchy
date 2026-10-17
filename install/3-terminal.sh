@@ -1,6 +1,6 @@
 sudo dnf install -y \
   wget curl unzip net-tools \
-  fd-find fzf ripgrep zoxide bat \
+  fd-find fzf ripgrep zoxide bat jq \
   wl-clipboard fastfetch btop \
   man tldr less whois \
   alacritty make
