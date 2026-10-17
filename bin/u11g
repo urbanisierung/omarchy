@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# SSH into the u11g server over Tailscale. Extra args are passed on,
+# e.g. `u11g uptime`.
+
+exec tailscale ssh "${U11G_TARGET:-adam@u11g}" "$@"

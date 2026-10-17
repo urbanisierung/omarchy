@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# Restart the desktop portals. Fixes black or frozen screen sharing (Zoom,
+# Meet, OBS) and broken file pickers without logging out.
+#
+# Stops the GNOME/GTK portal backends that conflict with Hyprland's, then
+# restarts xdg-desktop-portal-hyprland and xdg-desktop-portal.
+
+set -uo pipefail
+
+for p in xdg-desktop-portal-gnome xdg-desktop-portal-gtk; do
+  pkill -x "$p" 2>/dev/null || true
+done
+
+ok=1
+systemctl --user restart xdg-desktop-portal-hyprland.service || ok=0
+sleep 1
+systemctl --user restart xdg-desktop-portal.service || ok=0
+
+if ((ok)); then
+  msg="Portals restarted. Start screen sharing again."
+  urgency=normal
+else
+  msg="Portal restart failed. Check: journalctl --user -u xdg-desktop-portal-hyprland"
+  urgency=critical
+fi
+
+if command -v notify-send >/dev/null; then
+  notify-send -a "Screen sharing" -u "$urgency" "$msg"
+fi
+echo "$msg"
+((ok))

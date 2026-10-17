@@ -1,0 +1,129 @@
+#!/bin/bash
+
+# Wi-Fi menu (wofi + NetworkManager).
+#   omarchy-wifi           -> menu: pick a network to connect, toggle Wi-Fi, disconnect
+#   omarchy-wifi toggle    -> turn Wi-Fi on/off
+#   omarchy-wifi on|off    -> set Wi-Fi radio
+#
+# Known networks connect with their saved settings. New secured networks ask
+# for the password. Enterprise (802.1X) networks open nm-connection-editor.
+
+set -euo pipefail
+
+notify() {
+  if command -v notify-send >/dev/null; then notify-send -a "Wi-Fi" "$@"; else echo "$*"; fi
+}
+
+menu() {
+  local prompt="$1"
+  shift
+  flock --nonblock /tmp/.wofi.lock wofi --dmenu -i -p "$prompt" "$@"
+}
+
+radio() { nmcli radio wifi; }
+
+set_radio() {
+  nmcli radio wifi "$1"
+  notify "Wi-Fi $1"
+}
+
+case "${1:-}" in
+  toggle)
+    if [[ "$(radio)" == enabled ]]; then set_radio off; else set_radio on; fi
+    exit 0
+    ;;
+  on | off) set_radio "$1"; exit 0 ;;
+  "") ;;
+  *) echo "usage: omarchy-wifi [toggle|on|off]" >&2; exit 2 ;;
+esac
+
+if [[ "$(radio)" != enabled ]]; then
+  choice="$(printf '%s\n' "󰖩  Turn Wi-Fi on" "  Network settings" | menu "Wi-Fi is off")" || exit 0
+  case "$choice" in
+    *"Turn Wi-Fi on"*) set_radio on ;;
+    *settings*) nm-connection-editor & ;;
+  esac
+  exit 0
+fi
+
+# Saved Wi-Fi connections (names usually equal the SSID).
+mapfile -t saved < <(nmcli -t -f NAME,TYPE connection show | awk -F: '$2 == "802-11-wireless" { print $1 }')
+is_saved() {
+  local s
+  for s in "${saved[@]}"; do [[ "$s" == "$1" ]] && return 0; done
+  return 1
+}
+
+# IN-USE:SIGNAL:SECURITY:SSID, SSID last so colons inside it survive.
+declare -A security=() ssid_of=()
+lines=()
+active=""
+while IFS=: read -r inuse signal sec ssid; do
+  [[ -z "$ssid" || -n "${security[$ssid]+x}" ]] && continue # hidden or duplicate (other band)
+  security[$ssid]="$sec"
+  if [[ "$inuse" == "*" ]]; then
+    active="$ssid"
+    mark="󰄬"
+  elif is_saved "$ssid"; then
+    mark="󰆓"
+  else
+    mark=" "
+  fi
+  lock=""
+  [[ -n "$sec" && "$sec" != "--" ]] && lock=" "
+  line="$mark  $ssid  ($signal%)$lock"
+  lines+=("$line")
+  ssid_of[$line]="$ssid"
+done < <(nmcli -t --escape no -f IN-USE,SIGNAL,SECURITY,SSID device wifi list --rescan auto)
+
+extras=()
+[[ -n "$active" ]] && extras+=("󰖪  Disconnect $active")
+extras+=("󰖪  Turn Wi-Fi off" "  Network settings")
+
+choice="$(printf '%s\n' "${lines[@]}" "${extras[@]}" | menu "Wi-Fi")" || exit 0
+
+case "$choice" in
+  *"Turn Wi-Fi off"*) set_radio off; exit 0 ;;
+  *"Network settings"*) nm-connection-editor & exit 0 ;;
+  *"Disconnect "*)
+    nmcli connection down id "$active" >/dev/null && notify "Disconnected from $active"
+    exit 0
+    ;;
+esac
+
+[[ -n "${ssid_of[$choice]+x}" ]] || { notify "Unknown choice: $choice"; exit 1; }
+ssid="${ssid_of[$choice]}"
+sec="${security[$ssid]}"
+
+if [[ "$ssid" == "$active" ]]; then
+  notify "Already connected to $ssid"
+  exit 0
+fi
+
+if is_saved "$ssid"; then
+  if nmcli connection up id "$ssid" >/dev/null 2>&1; then
+    notify "Connected to $ssid"
+    exit 0
+  fi
+  notify "Saved settings for $ssid failed, asking for the password"
+fi
+
+if [[ "$sec" == *802.1X* ]]; then
+  notify "$ssid needs enterprise login, opening network settings"
+  nm-connection-editor &
+  exit 0
+fi
+
+if [[ -z "$sec" || "$sec" == "--" ]]; then
+  nmcli device wifi connect "$ssid" >/dev/null && notify "Connected to $ssid"
+  exit 0
+fi
+
+password="$(menu "Password for $ssid" --password </dev/null)" || exit 0
+[[ -n "$password" ]] || exit 0
+if out="$(nmcli device wifi connect "$ssid" password "$password" 2>&1)"; then
+  notify "Connected to $ssid"
+else
+  notify -u critical "Could not connect to $ssid" "$out"
+  exit 1
+fi

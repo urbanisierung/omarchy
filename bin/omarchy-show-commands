@@ -7,6 +7,10 @@
 
 set -euo pipefail
 
+# Omarchy commands are listed by name; make sure they resolve when launched
+# from a keybinding, where the shell PATH may not be set.
+export PATH="$HOME/.local/share/omarchy/bin:$PATH"
+
 WOFI_ARGS=(
   -dmenu -i --width 60% --height 70% -p "Useful commands" -O alphabetical
 )
@@ -14,6 +18,11 @@ WOFI_ARGS=(
 # Structured command list in JSON. Each entry:
 # { "cmd": string, "desc": string, "out": boolean }
 COMMANDS_JSON='[
+  {"cmd": "omarchy-wifi",               "desc": "Wi-Fi menu: connect, toggle, disconnect"},
+  {"cmd": "omarchy-wifi toggle",        "desc": "Turn Wi-Fi on/off"},
+  {"cmd": "omarchy-restart-portal",     "desc": "Fix black/frozen screen sharing (restart portals)"},
+  {"cmd": "omarchy-edit-config",        "desc": "Pick a config file to edit"},
+  {"cmd": "omarchy-update-hypr-plugins --force", "desc": "Rebuild Hyprland plugins (hyprpm)", "out": true},
   {"cmd": "nm-connection-editor",       "desc": "Open NetworkManager"},
   {"cmd": "nmcli device wifi list",      "desc": "List available Wi-Fi networks",     "out": true},
   {"cmd": "nmcli connection show",       "desc": "Show all network connections",       "out": true},

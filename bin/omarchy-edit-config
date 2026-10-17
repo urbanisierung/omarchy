@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# Pick a config file and open it in your editor.
+#   omarchy-edit-config    -> wofi list (from a keybinding), fzf list in a terminal
+#
+# Lists Hyprland, Waybar, shell and ~/.config/envvars files that exist.
+# Waybar reloads after you save its files; Hyprland reloads by itself.
+# Editor: $EDITOR, else nano.
+
+set -euo pipefail
+
+editor="${EDITOR:-nano}"
+terminal="${TERMINAL:-ghostty}"
+omarchy="$HOME/.local/share/omarchy"
+
+candidates=(
+  "$HOME/.config/hypr/hyprland.lua"
+  "$HOME/.config/hypr/monitors.lua"
+  "$omarchy/default/hypr/bindings.lua"
+  "$omarchy/default/hypr/autostart.lua"
+  "$omarchy/default/hypr/input.lua"
+  "$omarchy/default/hypr/looknfeel.lua"
+  "$omarchy/default/hypr/windows.lua"
+  "$omarchy/default/hypr/envs.lua"
+  "$HOME/.config/hypr/hypridle.conf"
+  "$HOME/.config/hypr/hyprlock.conf"
+  "$HOME/.config/waybar/config"
+  "$HOME/.config/waybar/style.css"
+  "$HOME/.config/wofi/config"
+  "$HOME/.config/ghostty/config"
+  "$HOME/.zshrc"
+  "$HOME/.bashrc"
+)
+shopt -s nullglob
+candidates+=("$HOME"/.config/envvars/*.env)
+shopt -u nullglob
+
+files=()
+for f in "${candidates[@]}"; do
+  [[ -e "$f" ]] && files+=("${f/#$HOME/\~}")
+done
+((${#files[@]})) || { echo "omarchy-edit-config: no config files found" >&2; exit 1; }
+
+if [[ -t 0 && -t 1 ]]; then
+  if command -v fzf >/dev/null; then
+    choice="$(printf '%s\n' "${files[@]}" | fzf --prompt="edit › ")" || exit 0
+  else
+    PS3="file #: "
+    select choice in "${files[@]}"; do [[ -n "$choice" ]] && break; done
+  fi
+  in_terminal=1
+else
+  choice="$(printf '%s\n' "${files[@]}" |
+    flock --nonblock /tmp/.wofi.lock wofi --dmenu -i -p "Edit config")" || exit 0
+  in_terminal=0
+fi
+[[ -n "${choice:-}" ]] || exit 0
+
+file="${choice/#\~/$HOME}"
+after=""
+[[ "$file" == */waybar/* ]] && after="; pkill -SIGUSR2 -x waybar || true"
+
+if ((in_terminal)); then
+  "$editor" "$file"
+  [[ -n "$after" ]] && pkill -SIGUSR2 -x waybar || true
+else
+  exec "$terminal" -e bash -c "$editor \"\$1\"$after" _ "$file"
+fi

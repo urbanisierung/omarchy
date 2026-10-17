@@ -62,6 +62,15 @@ hl.bind("SUPER + SHIFT + U", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy
 
 hl.bind("SUPER + U", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-show-repos"))
 
+-- Wi-Fi menu
+hl.bind("SUPER + ALT + W", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-wifi"))
+
+-- Fix black/frozen screen sharing by restarting the portals
+hl.bind("SUPER + ALT + S", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-restart-portal"))
+
+-- Pick a config file to edit
+hl.bind("SUPER + ALT + E", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-edit-config"))
+
 hl.bind("SHIFT + CTRL + M", hl.dsp.exec_cmd("copyq toggle"))
 
 hl.bind("SHIFT + CTRL + J", hl.dsp.exec_cmd("PATH=\"$HOME/.local/bin:$PATH\" kaihuman-palette-toggle"))

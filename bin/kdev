@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Log in to the dev Kubernetes cluster through Teleport.
+#   kdev              -> log in to Teleport if needed, then to the default cluster
+#   kdev <cluster>    -> same, for another cluster
+#
+# Settings (env vars, e.g. in ~/.config/envvars):
+#   KDEV_PROXY    Teleport proxy        (default: camunda.teleport.sh)
+#   KDEV_AUTH     Teleport auth method  (optional, passed as --auth)
+#   KDEV_CLUSTER  default cluster       (default: saas-dev-main-eu-central-1)
+
+set -euo pipefail
+
+proxy="${KDEV_PROXY:-camunda.teleport.sh}"
+cluster="${1:-${KDEV_CLUSTER:-saas-dev-main-eu-central-1}}"
+
+if ! tsh status >/dev/null 2>&1; then
+  echo "→ tsh login ($proxy)"
+  tsh login --proxy="$proxy" ${KDEV_AUTH:+--auth="$KDEV_AUTH"}
+fi
+
+echo "→ tsh kube login $cluster"
+tsh kube login "$cluster"

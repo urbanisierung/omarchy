@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Rebuild Hyprland plugins (hyprpm) when Hyprland was upgraded.
+#   omarchy-update-hypr-plugins          -> rebuild only if Hyprland's version changed
+#   omarchy-update-hypr-plugins --force  -> always rebuild
+#
+# Plugins must match the running Hyprland build, otherwise they fail with
+# "Mismatched headers". `hyprpm update -f` forces the header refresh (a plain
+# update can wrongly say "up to date"). Called by omarchy-update.
+
+set -euo pipefail
+
+command -v hyprpm >/dev/null || exit 0
+
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
+stamp="$state_dir/hyprpm-built-for"
+mkdir -p "$state_dir"
+
+current="$(rpm -q hyprland 2>/dev/null || hyprctl version 2>/dev/null | head -1 || echo unknown)"
+built="$(cat "$stamp" 2>/dev/null || true)"
+
+if [[ "${1:-}" != "--force" && "$current" == "$built" ]]; then
+  echo "Hyprland plugins already built for $current"
+  exit 0
+fi
+
+echo "Rebuilding Hyprland plugins for $current"
+hyprpm update -f
+echo "$current" >"$stamp"
+
+# Load the new build into the running session.
+if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+  hyprpm reload -n
+fi

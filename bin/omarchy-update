@@ -26,3 +26,6 @@ done
 
 # Back to where we came from
 cd - >/dev/null
+
+# Rebuild Hyprland plugins if Hyprland was upgraded since the last build
+~/.local/share/omarchy/bin/omarchy-update-hypr-plugins || echo "Hyprland plugin rebuild failed; run: omarchy-update-hypr-plugins --force"
