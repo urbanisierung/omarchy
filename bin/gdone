@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# gdone: finish work on a branch.
+#   1. push the branch (and set its upstream)   = gpsup
+#   2. go to the main branch                    = gcm
+#   3. pull                                     = gl
+#   4. delete local branches already merged into main
+#      (never the branch you just pushed), and list branches whose remote
+#      branch is gone (for example squash-merged PRs) so you can delete them.
+#
+# Stops before doing anything if you have uncommitted changes.
+
+set -euo pipefail
+
+here="$(dirname "$(readlink -f "$0")")"
+main="$("$here/omarchy-git-main-branch")"
+branch="$(git branch --show-current)"
+
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+  echo "gdone: you have uncommitted changes. Commit or stash them first." >&2
+  git status --short --untracked-files=no >&2
+  exit 1
+fi
+
+if [[ -z "$branch" ]]; then
+  echo "gdone: not on a branch (detached HEAD)." >&2
+  exit 1
+fi
+
+if [[ "$branch" != "$main" ]]; then
+  echo "→ push $branch"
+  git push --set-upstream origin "$branch"
+fi
+
+echo "→ switch to $main and pull"
+git switch "$main"
+git pull --prune
+
+mapfile -t merged < <(
+  git for-each-ref --format='%(refname:short)' --merged "$main" refs/heads/ |
+    grep -vxF -e "$main" -e "$branch" || true
+)
+for b in "${merged[@]}"; do
+  git branch -d "$b"
+done
+
+mapfile -t gone < <(
+  git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads/ |
+    awk '$2 == "[gone]" { print $1 }' | grep -vxF -e "$main" -e "$branch" || true
+)
+if ((${#gone[@]})); then
+  echo
+  echo "Remote branch deleted, local branch kept (may hold unmerged work):"
+  printf '  %s\n' "${gone[@]}"
+  echo "Delete with: git branch -D ${gone[*]}"
+fi

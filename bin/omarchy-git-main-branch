@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# Print the main branch name (main, master, ...) of a remote.
+#   omarchy-git-main-branch            -> branch of origin
+#   omarchy-git-main-branch upstream   -> branch of upstream
+# Used by gml, gdone, gsync.
+
+set -euo pipefail
+
+remote="${1:-origin}"
+
+# 1. What the remote says its HEAD is (set by clone or `git remote set-head`).
+if ref=$(git symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null); then
+  echo "${ref#"$remote"/}"
+  exit 0
+fi
+
+# 2. Common names that exist on the remote or locally.
+for name in main master trunk develop; do
+  if git show-ref --verify --quiet "refs/remotes/$remote/$name" ||
+    git show-ref --verify --quiet "refs/heads/$name"; then
+    echo "$name"
+    exit 0
+  fi
+done
+
+echo "omarchy-git-main-branch: cannot find the main branch of '$remote'" >&2
+echo "  fix: git remote set-head $remote --auto" >&2
+exit 1

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# gml: go to the main branch and pull it.
+# Same as `gcm && gl`, but works for main or master.
+
+set -euo pipefail
+
+here="$(dirname "$(readlink -f "$0")")"
+main="$("$here/omarchy-git-main-branch")"
+
+git switch "$main"
+git pull "$@"

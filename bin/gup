@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# gup: pull, then install dependencies only if the lockfile changed
+# (or node_modules is missing). Extra args go to `git pull`.
+#
+# Supports pnpm, npm, yarn and bun, picked by the lockfile at the repo root.
+
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+before="$(git rev-parse HEAD)"
+
+git pull "$@"
+
+after="$(git rev-parse HEAD)"
+
+declare -A installers=(
+  [pnpm-lock.yaml]="pnpm install"
+  [package-lock.json]="npm install"
+  [yarn.lock]="yarn install"
+  [bun.lock]="bun install"
+  [bun.lockb]="bun install"
+)
+
+for lock in pnpm-lock.yaml bun.lock bun.lockb yarn.lock package-lock.json; do
+  [[ -f "$root/$lock" ]] || continue
+  reason=""
+  if [[ ! -d "$root/node_modules" ]]; then
+    reason="node_modules is missing"
+  elif [[ "$before" != "$after" ]] && ! git diff --quiet "$before" "$after" -- "$root/$lock"; then
+    reason="$lock changed"
+  fi
+  if [[ -n "$reason" ]]; then
+    echo "→ $reason: ${installers[$lock]}"
+    (cd "$root" && ${installers[$lock]})
+  else
+    echo "→ $lock unchanged, skipping install"
+  fi
+  exit 0
+done

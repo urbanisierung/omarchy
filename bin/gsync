@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# gsync: merge the latest main branch into the current branch.
+#   gsync            -> from upstream if that remote exists (forks), else origin
+#   gsync <remote>   -> from that remote
+#
+# Same as `git fetch <remote> && git merge <remote>/main`. Does not push.
+
+set -euo pipefail
+
+here="$(dirname "$(readlink -f "$0")")"
+
+if [[ $# -gt 0 ]]; then
+  remote="$1"
+elif git remote | grep -qx upstream; then
+  remote=upstream
+else
+  remote=origin
+fi
+
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+  echo "gsync: you have uncommitted changes. Commit or stash them first." >&2
+  exit 1
+fi
+
+echo "→ fetch $remote"
+git fetch "$remote"
+main="$("$here/omarchy-git-main-branch" "$remote")"
+
+echo "→ merge $remote/$main into $(git branch --show-current)"
+git merge --no-edit "$remote/$main"

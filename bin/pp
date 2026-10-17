@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# pp: run a package.json script, picked from a list.
+#   pp                 -> fuzzy pick a script from the nearest package.json
+#   pp build           -> run "build" directly if it exists, else pick with "build" pre-typed
+#   pp test --watch    -> extra args go to the script
+#
+# Uses pnpm, yarn, bun or npm based on the lockfile (or "packageManager"
+# in package.json). Needs jq; uses fzf for the list (falls back to a menu).
+
+set -euo pipefail
+
+die() { echo "pp: $*" >&2; exit 1; }
+command -v jq >/dev/null || die "needs jq (sudo dnf install jq)"
+
+# Nearest package.json from here upwards.
+dir="$PWD"
+while [[ ! -f "$dir/package.json" ]]; do
+  [[ "$dir" == / ]] && die "no package.json in $PWD or above"
+  dir="$(dirname "$dir")"
+done
+pkg="$dir/package.json"
+
+# Package manager: "packageManager" field, else nearest lockfile upwards.
+pm="$(jq -r '.packageManager // empty | split("@")[0]' "$pkg")"
+if [[ -z "$pm" ]]; then
+  d="$dir"
+  while [[ -z "$pm" ]]; do
+    if [[ -f "$d/pnpm-lock.yaml" || -f "$d/pnpm-workspace.yaml" ]]; then pm=pnpm
+    elif [[ -f "$d/bun.lock" || -f "$d/bun.lockb" ]]; then pm=bun
+    elif [[ -f "$d/yarn.lock" ]]; then pm=yarn
+    elif [[ -f "$d/package-lock.json" ]]; then pm=npm
+    elif [[ "$d" == / ]]; then pm=npm
+    fi
+    d="$(dirname "$d")"
+  done
+fi
+
+mapfile -t scripts < <(jq -r '.scripts // {} | to_entries[] | "\(.key)\t\(.value)"' "$pkg")
+((${#scripts[@]})) || die "no scripts in $pkg"
+
+name=""
+query="${1:-}"
+if [[ -n "$query" ]] && jq -e --arg s "$query" '.scripts | has($s)' "$pkg" >/dev/null; then
+  name="$query"
+  shift
+else
+  [[ -n "$query" ]] && shift
+  if command -v fzf >/dev/null; then
+    pick="$(printf '%s\n' "${scripts[@]}" |
+      fzf --delimiter='\t' --with-nth=1 --query="$query" --select-1 --exit-0 \
+        --prompt="$pm run › " --header="${pkg/#$HOME/\~}" \
+        --preview='echo {2}' --preview-window=down,3,wrap)" || exit 130
+    name="${pick%%$'\t'*}"
+  else
+    PS3="script #: "
+    select pick in "${scripts[@]%%$'\t'*}"; do
+      [[ -n "$pick" ]] && { name="$pick"; break; }
+    done
+  fi
+fi
+[[ -n "$name" ]] || exit 130
+
+cd "$dir"
+echo "→ $pm run $name $*"
+exec "$pm" run "$name" "$@"
