@@ -10,6 +10,11 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("eval $(gnome-keyring-daemon --start) && export SSH_AUTH_SOCK")
     hl.exec_cmd("~/.local/share/omarchy/bin/omarchy-powerprofile boot")
 
+    -- Stop the GNOME/GTK portals that fight Hyprland's and restart the portals
+    -- cleanly, so screen sharing works on the first try. SUPER + ALT + S runs
+    -- the same fix during a session.
+    hl.exec_cmd("~/.local/share/omarchy/bin/omarchy-restart-portal --boot")
+
     -- Hyprtasking must be loaded before its config is applied. Doing this earlier
     -- in the config parse phase produces "unknown config key" errors.
     hl.exec_cmd("hyprpm reload -n")

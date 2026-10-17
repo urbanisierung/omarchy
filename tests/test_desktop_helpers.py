@@ -42,6 +42,7 @@ grep -m1 -F -- "$WOFI_PICK" || exit 1
     "systemctl": LOGGER + 'exit "${SYSTEMCTL_RC:-0}"\n',
     "pkill": LOGGER + "exit 1\n",
     "sleep": "",
+    "dbus-update-activation-environment": LOGGER,
     "hyprpm": LOGGER,
     "rpm": 'echo "${HYPR_VERSION:-hyprland-0.55.0-1.fc44.x86_64}"\n',
     "fake-editor": LOGGER,
@@ -166,6 +167,21 @@ class DesktopHelpersTest(unittest.TestCase):
             "systemctl --user restart xdg-desktop-portal.service",
         ])
         self.assertIn("pkill -x xdg-desktop-portal-gnome", self.calls("pkill"))
+
+    def test_restart_portal_boot_is_quiet_and_shares_env(self):
+        self.run_bin("omarchy-restart-portal", "--boot")
+        self.assertTrue(any("--systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP" in c
+                            for c in self.calls("dbus-update-activation-environment")))
+        self.assertEqual(len(self.calls("systemctl")), 2)
+        self.assertEqual(self.calls("notify-send"), [])
+
+    def test_restart_portal_boot_notifies_on_failure(self):
+        self.run_bin("omarchy-restart-portal", "--boot", env={"SYSTEMCTL_RC": "1"}, check=False)
+        self.assertTrue(any("critical" in c for c in self.calls("notify-send")))
+
+    def test_autostart_runs_portal_fix(self):
+        self.assertIn("omarchy-restart-portal --boot",
+                      (ROOT / "default/hypr/autostart.lua").read_text())
 
     def test_restart_portal_failure_exits_nonzero(self):
         r = self.run_bin("omarchy-restart-portal", env={"SYSTEMCTL_RC": "1"}, check=False)

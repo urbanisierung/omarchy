@@ -5,8 +5,24 @@
 #
 # Stops the GNOME/GTK portal backends that conflict with Hyprland's, then
 # restarts xdg-desktop-portal-hyprland and xdg-desktop-portal.
+#
+#   omarchy-restart-portal          -> restart now and show a notification
+#   omarchy-restart-portal --boot   -> for Hyprland autostart: wait for the
+#                                      session, share its environment with
+#                                      systemd/D-Bus, restart quietly (only
+#                                      notifies on failure)
 
 set -uo pipefail
+
+boot=0
+if [[ "${1:-}" == "--boot" ]]; then
+  boot=1
+  sleep 2
+  # Portals started by systemd need to know the Wayland display and desktop.
+  dbus-update-activation-environment --systemd \
+    WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP HYPRLAND_INSTANCE_SIGNATURE ||
+    true
+fi
 
 for p in xdg-desktop-portal-gnome xdg-desktop-portal-gtk; do
   pkill -x "$p" 2>/dev/null || true
@@ -25,7 +41,7 @@ else
   urgency=critical
 fi
 
-if command -v notify-send >/dev/null; then
+if command -v notify-send >/dev/null && ! ((boot && ok)); then
   notify-send -a "Screen sharing" -u "$urgency" "$msg"
 fi
 echo "$msg"
