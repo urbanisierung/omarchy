@@ -3,6 +3,7 @@ sudo dnf install -y \
   fcitx5 fcitx5-gtk fcitx5-qt fcitx5-configtool \
   nautilus sushi ffmpegthumbnailer gnome-calculator \
   chromium mpv \
+  python3-gobject gtk3 \
   evince imv p7zip copyq flameshot translate-shell
 
 # Note: These packages are not available in Fedora repos and need alternative installation:

@@ -74,6 +74,17 @@ Authentication, display-off behavior, and power profiles are unchanged.
 
 Tests: `python3 -m unittest discover -s tests`.
 
+## Keyboard shortcuts
+
+**Super+K** opens a searchable native shortcut library with categories, readable
+action names, keycaps, shortcut modes, and expandable source/action details.
+The catalog follows the main Hyprland configuration's includes rather than
+maintaining a second list. JSON export is available in the window and through
+`omarchy-show-keybindings --export ~/keybindings.json`.
+
+See [the shortcut catalog guide](docs/keybindings.md) for discovery rules,
+custom descriptions, JSON fields, and headless usage.
+
 ## License
 
 Omarchy is released under the [MIT License](https://opensource.org/licenses/MIT).

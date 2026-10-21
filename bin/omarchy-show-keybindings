@@ -1,58 +1,65 @@
-#!/bin/bash
+#!/usr/bin/env python3
+"""Read-only Hyprland shortcut catalog; no configuration code is executed."""
 
-# A script to display Hyprland keybindings defined in your configuration
-# using wofi for an interactive search menu.
+import argparse
+import importlib.util
+import json
+import os
+import sys
+from pathlib import Path
 
-USER_HYPRLAND_CONF="$HOME/.config/hypr/hyprland.lua"
-OMARCHY_BINDINGS_CONF="$HOME/.local/share/omarchy/default/hypr/bindings.lua"
+ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location(
+    "keybindings", ROOT / "tools/keybindings.py"
+)
+catalog = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(catalog)
 
-# Process the configuration file to extract and format keybindings
-# 1. `grep` finds all lines with an `hl.bind(...)` call.
-# 2. `awk` does the heavy lifting of formatting the output:
-#    - Drops a trailing `, { ... }` options table (e.g. submap/mouse flags).
-#    - Pulls out the quoted key combo (first argument).
-#    - Pulls out the dispatcher call (second argument) as the action text.
-awk '
-# Turn a raw dispatcher call (e.g. hl.dsp.exec_cmd("cmd")) into readable text.
-function clean(a,    inner) {
-    sub(/^hl\.dsp\./, "", a)
-    if (a ~ /^exec_cmd\(/) {
-        inner = substr(a, length("exec_cmd(") + 1)
-        inner = substr(inner, 1, length(inner) - 1)
-        if (inner ~ /^".*"$/) {
-            inner = substr(inner, 2, length(inner) - 2)
-        }
-        a = inner
-    }
-    return a
-}
-{
-    line = $0
-    sub(/, \{[^}]*\}\)$/, ")", line)
 
-    prefix = "hl.bind(\""
-    p = index(line, prefix)
-    if (p == 0) next
-    rest = substr(line, p + length(prefix))
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--config", type=Path, action="append", help="Config root (repeatable)"
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="Print the catalog as JSON without a GUI"
+    )
+    parser.add_argument(
+        "--export", type=Path, help="Write JSON without opening the GUI"
+    )
+    parser.add_argument(
+        "--offline", action="store_true", help="Read files only; do not query Hyprland"
+    )
+    args = parser.parse_args()
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    configs = args.config or [config_home / "hypr/hyprland.lua"]
+    if not args.config and not configs[0].exists():
+        configs = [config_home / "hypr/hyprland.conf"]
 
-    q = index(rest, "\"")
-    if (q == 0) next
-    key_combo = substr(rest, 1, q - 1)
-    gsub(/[ \t]+/, " ", key_combo)
+    def load():
+        return catalog.generate(configs, live=not args.offline)
 
-    rest2 = substr(rest, q + 1)
-    c = index(rest2, ",")
-    if (c == 0) next
-    action = substr(rest2, c + 1)
-    gsub(/^[ \t]+/, "", action)
-    if (substr(action, length(action), 1) == ")") {
-        action = substr(action, 1, length(action) - 1)
-    }
+    try:
+        if args.json or args.export:
+            data = load()
+            if args.export:
+                catalog.export_json(data, args.export)
+            if args.json:
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+            for warning in data["warnings"]:
+                print(warning, file=sys.stderr)
+        else:
+            spec = importlib.util.spec_from_file_location(
+                "keybindings_ui", ROOT / "tools/keybindings_ui.py"
+            )
+            ui = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(ui)
+            ui.show(load, catalog.export_json)
+    except (OSError, ValueError, ImportError) as error:
+        print(f"Shortcut catalog: {error}", file=sys.stderr)
+        return 1
+    return 0
 
-    action = clean(action)
 
-    if (action != "" && action != "nil") {
-        printf "%-35s → %s\n", key_combo, action
-    }
-}' "$USER_HYPRLAND_CONF" "$OMARCHY_BINDINGS_CONF" |
-  flock --nonblock /tmp/.wofi.lock -c "wofi -dmenu -i --width 60% --height 70% -p 'Hyprland Keybindings' -O alphabetical"
+if __name__ == "__main__":
+    sys.exit(main())
