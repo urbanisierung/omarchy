@@ -93,11 +93,11 @@ hl.bind("SUPER + E", function() hl.plugin.hyprtasking.toggle("all") end)
 
 -- While the overview is open: arrows navigate the grid, Escape closes it.
 -- non_consuming lets these keys pass through normally when the overview is closed.
-hl.bind("left",   function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.move("left")  end end, { non_consuming = true })
-hl.bind("right",  function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.move("right") end end, { non_consuming = true })
-hl.bind("up",     function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.move("up")    end end, { non_consuming = true })
-hl.bind("down",   function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.move("down")  end end, { non_consuming = true })
-hl.bind("Escape", function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.toggle("all") end end, { non_consuming = true })
+-- hl.bind("left",   function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.move("left")  end end, { non_consuming = true })
+-- hl.bind("right",  function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.move("right") end end, { non_consuming = true })
+-- hl.bind("up",     function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.move("up")    end end, { non_consuming = true })
+-- hl.bind("down",   function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.move("down")  end end, { non_consuming = true })
+-- hl.bind("Escape", function() if hl.plugin.hyprtasking.is_active() then hl.plugin.hyprtasking.toggle("all") end end, { non_consuming = true })
 
 -- Control your input devices
 
