@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Claude Profiles
+Comment=Choose a business or personal Claude Desktop instance
+Exec=sh -c "exec python3 ~/.local/share/omarchy/bin/omarchy-claude-desktop"
+Icon=claude-desktop-unofficial
+Terminal=false
+Type=Application
+Categories=Office;
+StartupNotify=false

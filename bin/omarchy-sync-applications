@@ -9,3 +9,7 @@ gtk-update-icon-cache ~/.local/share/icons/hicolor &>/dev/null
 mkdir -p ~/.local/share/applications
 cp ~/.local/share/omarchy/applications/*.desktop ~/.local/share/applications/
 update-desktop-database ~/.local/share/applications
+
+if command -v claude-desktop-unofficial >/dev/null 2>&1; then
+	xdg-mime default com.anthropic.Claude.desktop x-scheme-handler/claude
+fi

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Name=Claude Profile Login
+Comment=Send Claude links to the selected running profile
+Exec=sh -c "exec python3 ~/.local/share/omarchy/bin/omarchy-claude-desktop --open-url \\"\\$1\\"" sh %u
+Icon=claude-desktop-unofficial
+Terminal=false
+Type=Application
+NoDisplay=true
+MimeType=x-scheme-handler/claude;
+X-Omarchy-Claude-Profiles=true

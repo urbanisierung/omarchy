@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""Choose an isolated Claude Desktop profile with Wofi."""
+
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from urllib.parse import urlsplit
+
+PROFILES = [("business", "Business", 6)] + [
+    (f"personal-{number}", f"Personal {number}", number + 10) for number in range(1, 11)
+]
+
+
+def hypr(*args):
+    return subprocess.run(
+        ["hyprctl", *args], capture_output=True, text=True, check=True, timeout=5
+    ).stdout
+
+
+def running_profiles(root, proc=Path("/proc")):
+    """Use argument boundaries, not substring matches or stale SingletonLocks."""
+    paths = {str(root / slug): slug for slug, _, _ in PROFILES}
+    running: dict[str, set[int]] = {slug: set() for slug, _, _ in PROFILES}
+    for process in proc.glob("[0-9]*"):
+        try:
+            if process.stat().st_uid != os.getuid():
+                continue
+            args = os.fsdecode((process / "cmdline").read_bytes()).split("\0")
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
+            # Processes can exit or become unreadable during the scan.
+            continue
+        if any(arg.startswith("--type=") for arg in args):
+            continue
+        executables = {Path(arg).name for arg in args[:2]}
+        if not executables.intersection(
+            {"claude-desktop", "claude-desktop-unofficial"}
+        ):
+            continue
+        for index, arg in enumerate(args):
+            if arg == "--user-data-dir" and index + 1 < len(args):
+                directory = args[index + 1]
+            elif arg.startswith("--user-data-dir="):
+                directory = arg.split("=", 1)[1]
+            else:
+                continue
+            slug = paths.get(directory)
+            if slug:
+                running[slug].add(int(process.name))
+    return running
+
+
+def menu_entries(workspace, running, clients):
+    # A workspace match is the explicit suggestion; otherwise free profiles lead.
+    ordered = sorted(
+        PROFILES,
+        key=lambda profile: (profile[2] != workspace, bool(running[profile[0]])),
+    )
+    entries = {}
+    for slug, name, target in ordered:
+        windows = [client for client in clients if client["pid"] in running[slug]]
+        if windows:
+            locations = ", ".join(
+                dict.fromkeys(str(client["workspace"]["name"]) for client in windows)
+            )
+            status = f"in use on workspace {locations}"
+        elif running[slug]:
+            status = "in use (no visible window)"
+        else:
+            status = "free"
+        suggested = " — suggested" if target == workspace else ""
+        entries[f"{name} — {status} — preferred WS {target}{suggested}"] = slug
+    return entries
+
+
+def claude_command(directory):
+    return [
+        "claude-desktop-unofficial",
+        "--enable-features=UseOzonePlatform",
+        "--ozone-platform=wayland",
+        f"--user-data-dir={directory}",
+    ]
+
+
+def forward_url(slug, root, url):
+    if not running_profiles(root)[slug]:
+        raise RuntimeError(
+            "The selected profile has closed. Reopen it and restart sign-in."
+        )
+    # Never send OAuth codes through a shell, Hyprland logging, or error output.
+    try:
+        result = subprocess.run(
+            [*claude_command(root / slug), url],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise RuntimeError(
+            "Could not deliver the Claude link. Restart sign-in."
+        ) from None
+    if result.returncode:
+        raise RuntimeError("Claude rejected the link. Restart sign-in in that profile.")
+
+
+def activate(slug, root, workspace):
+    # The menu may have been open while a profile started or closed.
+    running = running_profiles(root)
+    clients = json.loads(hypr("-j", "clients"))
+    for client in clients:
+        if client["pid"] in running[slug]:
+            window = json.dumps(f"address:{client['address']}")
+            hypr("dispatch", f"hl.dsp.focus({{ window = {window} }})")
+            return
+
+    directory = root / slug
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    command = shlex.join(claude_command(directory))
+    # Electron's single-instance lock reopens a tray-only profile rather than
+    # starting a second copy. Hyprland pins new windows to the invocation WS.
+    # Lua-configured Hyprland expects a dispatcher expression, not legacy args.
+    command = json.dumps(f"[workspace {workspace}] {command}", ensure_ascii=False)
+    result = hypr("dispatch", f"hl.dsp.exec_cmd({command})")
+    if result.strip() != "ok":
+        raise RuntimeError(f"Hyprland could not launch Claude: {result.strip()}")
+
+
+def main(args=()):
+    url = None
+    if args:
+        if len(args) != 2 or args[0] != "--open-url":
+            raise RuntimeError("Usage: omarchy-claude-desktop [--open-url CLAUDE_URL]")
+        url = args[1]
+        try:
+            parsed = urlsplit(url)
+        except ValueError:
+            raise RuntimeError("Invalid Claude link") from None
+        if (
+            not url.startswith("claude://")
+            or parsed.scheme != "claude"
+            or not parsed.netloc
+            or any(ord(char) < 32 or ord(char) == 127 for char in url)
+        ):
+            raise RuntimeError("Invalid Claude link")
+    for executable in ("wofi", "flock", "hyprctl", "claude-desktop-unofficial"):
+        if not shutil.which(executable):
+            raise RuntimeError(f"{executable} is required")
+    root = Path.home() / ".claude-instances"
+    workspace = json.loads(hypr("-j", "activeworkspace"))["id"]
+    running = running_profiles(root)
+    entries = menu_entries(workspace, running, json.loads(hypr("-j", "clients")))
+    prompt = f"Claude profiles · workspace {workspace}"
+    if url:
+        entries = {label: slug for label, slug in entries.items() if running[slug]}
+        if not entries:
+            raise RuntimeError(
+                "No Claude profile is running. Open one and restart sign-in."
+            )
+        prompt = "Claude link / login — select the original profile"
+    selected = subprocess.run(
+        [
+            "flock",
+            "--nonblock",
+            "/tmp/.wofi.lock",
+            "wofi",
+            "--dmenu",
+            "--insensitive",
+            "--width",
+            "65%",
+            "--height",
+            "60%",
+            "--sort-order",
+            "default",
+            "--prompt",
+            prompt,
+        ],
+        input="\n".join(entries) + "\n",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if selected.returncode:
+        if selected.stderr.strip():
+            raise RuntimeError(selected.stderr.strip())
+        return
+    choice = selected.stdout.strip()
+    if not choice:
+        return
+    if choice not in entries:
+        raise RuntimeError("Choose one of the listed Claude profiles")
+    if url:
+        forward_url(entries[choice], root, url)
+    activate(entries[choice], root, workspace)
+
+
+if __name__ == "__main__":
+    try:
+        main(sys.argv[1:])
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        message = f"Claude profiles: {error}"
+        print(message, file=sys.stderr)
+        if shutil.which("notify-send"):
+            subprocess.run(
+                ["notify-send", "-u", "critical", "Claude profiles", str(error)],
+                check=False,
+            )
+        sys.exit(1)

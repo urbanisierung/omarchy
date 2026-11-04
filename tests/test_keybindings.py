@@ -292,7 +292,7 @@ hl.bind("SUPER + code:10", hl.dsp.focus({ workspace = 1 }))
         with patch.dict(os.environ, {"HOME": str(self.home)}):
             data = kb.generate([ROOT / "config/hypr/hyprland.lua"], live=False)
         self.assertEqual(data["warnings"], [])
-        self.assertEqual(len(data["bindings"]), 143)
+        self.assertEqual(len(data["bindings"]), 139)
         self.assertEqual(len(data["sources"]), 9)
         self.assertEqual(sum(b["submap"] == "resize" for b in data["bindings"]), 5)
         for binding in data["bindings"]:

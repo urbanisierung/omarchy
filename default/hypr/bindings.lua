@@ -58,6 +58,9 @@ hl.bind("SUPER + I", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-show-pr
 
 hl.bind("SUPER + SHIFT + C", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-claude-code"))
 
+-- @shortcut Tools | Choose Claude Desktop profile
+hl.bind("SUPER + CTRL + C", hl.dsp.exec_cmd("python3 ~/.local/share/omarchy/bin/omarchy-claude-desktop"))
+
 hl.bind("SUPER + SHIFT + U", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-claude-usage"))
 
 hl.bind("SUPER + U", hl.dsp.exec_cmd("~/.local/share/omarchy/bin/omarchy-show-repos"))
